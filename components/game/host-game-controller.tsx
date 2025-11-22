@@ -5,9 +5,12 @@ import Image from "next/image"
 import { useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
-import { Users, Trophy, ArrowRight, Play } from "lucide-react"
-import { motion } from "framer-motion"
+import { Users, Trophy, ArrowRight, Play, Check, Loader2, Copy } from "lucide-react"
+import { motion, AnimatePresence } from "framer-motion"
 import useWindowSize from "react-use/lib/useWindowSize"
+import { Badge } from "@/components/ui/badge"
+import { Card } from "@/components/ui/card"
+import { toast } from "sonner"
 
 export function HostGameController({ game }: { game: any }) {
   const [players, setPlayers] = useState<any[]>([])
@@ -30,6 +33,7 @@ export function HostGameController({ game }: { game: any }) {
         (payload) => {
           if (payload.eventType === "INSERT") {
             setPlayers((prev) => [...prev, payload.new])
+            // Sound effect could play here
           }
         },
       )
@@ -56,7 +60,7 @@ export function HostGameController({ game }: { game: any }) {
     }
   }, [game.id])
 
-  // Timer effect
+  // Timer effect with improved visual feedback
   useEffect(() => {
     if (gameState === "question" && countdown !== null && countdown > 0) {
       const timer = setTimeout(() => setCountdown(countdown - 1), 1000)
@@ -99,43 +103,76 @@ export function HostGameController({ game }: { game: any }) {
     }
   }
 
-  const handleShowLeaderboard = async () => {
-    await updateGameState("leaderboard")
+  const copyJoinLink = () => {
+    navigator.clipboard.writeText(`https://lovable-bolt.vercel.app/play?pin=${game.pin_code}`)
+    toast.success("Join link copied to clipboard!")
   }
 
   // Views
   if (gameState === "lobby") {
     return (
-      <div className="min-h-screen bg-primary flex flex-col items-center justify-center text-primary-foreground p-8">
-        <div className="max-w-4xl w-full space-y-8 text-center">
-          <h1 className="text-6xl font-black tracking-tighter mb-8">Join the Game!</h1>
+      <div className="min-h-screen bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-500 flex flex-col items-center justify-center text-white p-8 relative overflow-hidden">
+        {/* Background Pattern */}
+        <div className="absolute inset-0 bg-[url('/grid.svg')] bg-center [mask-image:linear-gradient(180deg,white,rgba(255,255,255,0))]" />
 
-          <div className="bg-white p-8 rounded-3xl shadow-2xl flex flex-col md:flex-row items-center justify-between gap-12 text-foreground">
-            <div className="flex-1 space-y-4">
-              <p className="text-2xl font-medium text-muted-foreground">Go to</p>
-              <p className="text-5xl font-bold text-primary">lovable-bolt.vercel.app/play</p>
-              <p className="text-2xl font-medium text-muted-foreground">Enter PIN</p>
-              <p className="text-8xl font-black tracking-widest text-primary">{game.pin_code}</p>
-            </div>
-            <div className="p-4 bg-white rounded-xl border-4 border-primary/20">
-              <Image
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=https://lovable-bolt.vercel.app/play?pin=${game.pin_code}`}
-                alt="Join Game QR Code"
-                width={250}
-                height={250}
-              />
-            </div>
+        <div className="max-w-6xl w-full space-y-12 z-10 flex flex-col items-center">
+          <div className="space-y-2 text-center">
+            <Badge
+              variant="outline"
+              className="text-white border-white/30 bg-white/10 px-4 py-1 text-sm uppercase tracking-widest"
+            >
+              Waiting for players
+            </Badge>
+            <h1 className="text-7xl font-black tracking-tighter drop-shadow-lg">Join the Game!</h1>
           </div>
 
-          <div className="mt-12">
-            <div className="flex items-center justify-between mb-6 px-4">
-              <div className="flex items-center gap-3">
-                <Users className="w-8 h-8" />
-                <span className="text-3xl font-bold">{players.length} Players</span>
+          <Card className="bg-white/95 backdrop-blur-md p-8 rounded-3xl shadow-2xl w-full max-w-5xl border-0 ring-1 ring-white/20">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-12">
+              <div className="flex-1 space-y-8 text-center md:text-left">
+                <div className="space-y-2">
+                  <p className="text-2xl font-medium text-muted-foreground uppercase tracking-wide">Go to</p>
+                  <p className="text-4xl lg:text-5xl font-bold text-foreground">lovable-bolt.vercel.app/play</p>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-2xl font-medium text-muted-foreground uppercase tracking-wide">Enter PIN</p>
+                  <div className="text-7xl lg:text-9xl font-black tracking-widest text-primary tabular-nums">
+                    {game.pin_code}
+                  </div>
+                </div>
               </div>
+
+              <div className="relative group cursor-pointer" onClick={copyJoinLink}>
+                <div className="absolute -inset-1 bg-gradient-to-r from-pink-600 to-purple-600 rounded-2xl blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200" />
+                <div className="relative p-6 bg-white rounded-xl shadow-inner">
+                  <Image
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=https://lovable-bolt.vercel.app/play?pin=${game.pin_code}`}
+                    alt="Join Game QR Code"
+                    width={280}
+                    height={280}
+                    className="rounded-lg"
+                  />
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-xl">
+                    <Copy className="text-white w-12 h-12" />
+                  </div>
+                </div>
+                <p className="text-center mt-4 text-muted-foreground text-sm font-medium">Click to copy link</p>
+              </div>
+            </div>
+          </Card>
+
+          <div className="w-full space-y-6">
+            <div className="flex items-center justify-between px-4 bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/10">
+              <div className="flex items-center gap-4">
+                <div className="bg-white/20 p-3 rounded-full">
+                  <Users className="w-6 h-6 text-white" />
+                </div>
+                <span className="text-2xl font-bold text-white">{players.length} Players</span>
+              </div>
+
               <Button
                 size="lg"
-                className="text-2xl h-16 px-12 rounded-full font-bold bg-white text-primary hover:bg-white/90"
+                className="text-xl h-14 px-10 rounded-full font-bold bg-white text-purple-600 hover:bg-white/90 hover:scale-105 transition-all shadow-lg"
                 onClick={handleStartGame}
                 disabled={players.length === 0}
               >
@@ -143,17 +180,20 @@ export function HostGameController({ game }: { game: any }) {
               </Button>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {players.map((player) => (
-                <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  key={player.id}
-                  className="bg-white/10 backdrop-blur-sm p-4 rounded-xl font-bold text-xl"
-                >
-                  {player.name}
-                </motion.div>
-              ))}
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+              <AnimatePresence>
+                {players.map((player) => (
+                  <motion.div
+                    initial={{ scale: 0, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0, opacity: 0 }}
+                    key={player.id}
+                    className="bg-white/20 backdrop-blur-sm p-3 rounded-xl font-bold text-lg text-center border border-white/10 shadow-sm text-white truncate"
+                  >
+                    {player.name}
+                  </motion.div>
+                ))}
+              </AnimatePresence>
             </div>
           </div>
         </div>
@@ -161,108 +201,175 @@ export function HostGameController({ game }: { game: any }) {
     )
   }
 
+  // ... existing question, results, finished views with improved styling ...
   if (gameState === "question") {
     return (
-      <div className="min-h-screen bg-slate-100 flex flex-col p-6">
-        <div className="flex justify-between items-center mb-8">
-          <div className="text-2xl font-bold text-muted-foreground">
-            {currentQuestionIndex + 1} / {game.quiz.questions.length}
-          </div>
-          <div className="text-xl font-bold bg-white px-6 py-2 rounded-full shadow-sm">{answers.length} Answers</div>
+      <div className="min-h-screen bg-slate-50 flex flex-col relative overflow-hidden">
+        {/* Progress Bar */}
+        <div className="w-full h-2 bg-slate-200">
+          <motion.div
+            className="h-full bg-primary"
+            initial={{ width: "100%" }}
+            animate={{ width: "0%" }}
+            transition={{ duration: currentQuestion.time_limit, ease: "linear" }}
+          />
         </div>
 
-        <div className="flex-1 flex flex-col items-center justify-center max-w-5xl mx-auto w-full gap-12">
-          <h2 className="text-4xl md:text-5xl font-bold text-center leading-tight">{currentQuestion.question_text}</h2>
-
-          <div className="flex items-center justify-center">
-            <div className="w-32 h-32 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-5xl font-black shadow-xl">
-              {countdown}
+        <div className="flex-1 flex flex-col p-6 md:p-12 max-w-7xl mx-auto w-full">
+          <div className="flex justify-between items-center mb-12">
+            <Badge variant="outline" className="text-lg px-4 py-1 rounded-full bg-white shadow-sm">
+              Question {currentQuestionIndex + 1} / {game.quiz.questions.length}
+            </Badge>
+            <div className="text-xl font-bold bg-white px-6 py-2 rounded-full shadow-sm flex items-center gap-2">
+              <span className="text-primary">{answers.length}</span>
+              <span className="text-muted-foreground">Answers</span>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
-            {currentQuestion.options.map((option: any, idx: number) => (
+          <div className="flex-1 flex flex-col items-center justify-center gap-16">
+            <h2 className="text-4xl md:text-6xl font-bold text-center leading-tight text-slate-900 drop-shadow-sm max-w-5xl">
+              {currentQuestion.question_text}
+            </h2>
+
+            <div className="flex items-center justify-center">
               <div
-                key={option.id}
                 className={`
-                  p-8 rounded-2xl text-2xl font-bold text-white shadow-lg transition-transform
-                  ${idx === 0 ? "bg-red-500" : ""}
-                  ${idx === 1 ? "bg-blue-500" : ""}
-                  ${idx === 2 ? "bg-yellow-500" : ""}
-                  ${idx === 3 ? "bg-green-500" : ""}
-                `}
+                w-32 h-32 rounded-full flex items-center justify-center text-5xl font-black shadow-2xl border-8
+                ${(countdown || 0) <= 5 ? "bg-red-100 text-red-600 border-red-500 animate-pulse" : "bg-white text-primary border-primary"}
+              `}
               >
-                {option.option_text}
+                {countdown}
               </div>
-            ))}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-6xl">
+              {currentQuestion.options.map((option: any, idx: number) => (
+                <div
+                  key={option.id}
+                  className={`
+                    p-8 rounded-2xl text-2xl font-bold text-white shadow-lg transition-transform transform hover:scale-[1.02] flex items-center gap-4
+                    ${idx === 0 ? "bg-red-500 shadow-red-500/30" : ""}
+                    ${idx === 1 ? "bg-blue-500 shadow-blue-500/30" : ""}
+                    ${idx === 2 ? "bg-yellow-500 shadow-yellow-500/30" : ""}
+                    ${idx === 3 ? "bg-green-500 shadow-green-500/30" : ""}
+                  `}
+                >
+                  <div className="w-12 h-12 bg-black/20 rounded-full flex items-center justify-center text-3xl shrink-0">
+                    {idx === 0 && "▲"}
+                    {idx === 1 && "◆"}
+                    {idx === 2 && "●"}
+                    {idx === 3 && "■"}
+                  </div>
+                  {option.option_text}
+                </div>
+              ))}
+            </div>
+
+            <Button variant="secondary" onClick={handleShowResults} className="mt-auto">
+              Skip Timer
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ... existing results and finished views ...
+  // (Improved Styling for Results View)
+  if (gameState === "results") {
+    const correctOptionId = currentQuestion.options.find((o: any) => o.is_correct)?.id
+
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col p-6 md:p-12">
+        <div className="max-w-7xl mx-auto w-full flex flex-col h-full">
+          <h2 className="text-3xl md:text-4xl font-bold text-center mb-12 text-slate-800 bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+            {currentQuestion.question_text}
+          </h2>
+
+          <div className="flex-1 flex items-end justify-center gap-4 md:gap-8 pb-20 w-full">
+            {currentQuestion.options.map((option: any, idx: number) => {
+              const count = answers.filter((a) => a.option_id === option.id).length
+              const height = answers.length > 0 ? (count / answers.length) * 100 : 0
+
+              return (
+                <div key={option.id} className="flex-1 flex flex-col items-center gap-4 h-full justify-end group">
+                  <div className="font-bold text-2xl bg-white px-4 py-2 rounded-lg shadow-sm group-hover:scale-110 transition-transform">
+                    {count}
+                  </div>
+                  <motion.div
+                    initial={{ height: 0 }}
+                    animate={{ height: `${Math.max(height, 10)}%` }}
+                    className={`w-full rounded-t-2xl relative flex items-end justify-center pb-4 transition-all
+                      ${idx === 0 ? "bg-red-500" : ""}
+                      ${idx === 1 ? "bg-blue-500" : ""}
+                      ${idx === 2 ? "bg-yellow-500" : ""}
+                      ${idx === 3 ? "bg-green-500" : ""}
+                      ${option.is_correct ? "opacity-100 ring-4 ring-offset-4 ring-green-400" : "opacity-40"}
+                     `}
+                  >
+                    <div className="text-white font-bold text-xl mix-blend-overlay opacity-50">
+                      {idx === 0 && "▲"}
+                      {idx === 1 && "◆"}
+                      {idx === 2 && "●"}
+                      {idx === 3 && "■"}
+                    </div>
+
+                    {option.is_correct && (
+                      <div className="absolute -top-14 left-1/2 -translate-x-1/2 bg-green-500 text-white p-3 rounded-full shadow-lg animate-bounce">
+                        <Check className="w-6 h-6" />
+                      </div>
+                    )}
+                  </motion.div>
+                  <div
+                    className={`text-center font-semibold leading-tight p-2 rounded-lg w-full ${option.is_correct ? "bg-green-100 text-green-800" : "text-muted-foreground"}`}
+                  >
+                    {option.option_text}
+                  </div>
+                </div>
+              )
+            })}
           </div>
 
-          <Button variant="secondary" onClick={handleShowResults} className="mt-4">
-            Skip Timer
-          </Button>
+          <div className="flex justify-end pt-6 border-t border-slate-200">
+            <Button
+              size="lg"
+              onClick={handleNextQuestion}
+              className="gap-2 text-xl px-10 h-16 rounded-full shadow-xl hover:scale-105 transition-all"
+            >
+              Next Question <ArrowRight className="w-6 h-6" />
+            </Button>
+          </div>
         </div>
       </div>
     )
   }
 
-  if (gameState === "results") {
-    // Calculate stats
-    const correctOptionId = currentQuestion.options.find((o: any) => o.is_correct)?.id
-    const correctCount = answers.filter((a) => a.option_id === correctOptionId).length
-
-    return (
-      <div className="min-h-screen bg-slate-100 flex flex-col p-6">
-        <h2 className="text-4xl font-bold text-center mb-12">{currentQuestion.question_text}</h2>
-
-        <div className="flex-1 flex items-end justify-center gap-8 pb-20 max-w-4xl mx-auto w-full">
-          {currentQuestion.options.map((option: any, idx: number) => {
-            const count = answers.filter((a) => a.option_id === option.id).length
-            const height = answers.length > 0 ? (count / answers.length) * 100 : 0
-
-            return (
-              <div key={option.id} className="flex-1 flex flex-col items-center gap-4 h-full justify-end">
-                <div className="font-bold text-2xl">{count}</div>
-                <motion.div
-                  initial={{ height: 0 }}
-                  animate={{ height: `${Math.max(height, 5)}%` }}
-                  className={`w-full rounded-t-lg relative ${option.is_correct ? "opacity-100" : "opacity-40"}
-                    ${idx === 0 ? "bg-red-500" : ""}
-                    ${idx === 1 ? "bg-blue-500" : ""}
-                    ${idx === 2 ? "bg-yellow-500" : ""}
-                    ${idx === 3 ? "bg-green-500" : ""}
-                   `}
-                >
-                  {option.is_correct && (
-                    <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-black text-white p-2 rounded-full">
-                      <Trophy className="w-4 h-4" />
-                    </div>
-                  )}
-                </motion.div>
-                <div className="text-center font-medium leading-tight">{option.option_text}</div>
-              </div>
-            )
-          })}
-        </div>
-
-        <div className="flex justify-end">
-          <Button size="lg" onClick={handleNextQuestion} className="gap-2 text-xl px-8">
-            Next <ArrowRight />
-          </Button>
-        </div>
-      </div>
-    )
-  }
-
+  // (Improved Styling for Finished View)
   if (gameState === "finished") {
     return (
-      <div className="min-h-screen bg-primary text-primary-foreground flex flex-col items-center justify-center">
-        <h1 className="text-6xl font-black mb-8">Game Over!</h1>
-        <div className="bg-white text-foreground p-12 rounded-3xl shadow-2xl text-center max-w-2xl w-full">
-          <Trophy className="w-32 h-32 text-yellow-400 mx-auto mb-8" />
-          <h2 className="text-4xl font-bold mb-4">Congratulations!</h2>
-          <p className="text-xl text-muted-foreground mb-8">The quiz has ended.</p>
+      <div className="min-h-screen bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-500 flex flex-col items-center justify-center p-8 text-white relative overflow-hidden">
+        {/* Confetti Effect would go here */}
+
+        <div className="bg-white/10 backdrop-blur-md p-12 rounded-[3rem] shadow-2xl text-center max-w-3xl w-full border border-white/20 relative z-10">
+          <div className="mb-8 relative inline-block">
+            <div className="absolute -inset-4 bg-yellow-400/30 blur-xl rounded-full animate-pulse" />
+            <Trophy className="w-40 h-40 text-yellow-300 relative z-10 drop-shadow-md" />
+          </div>
+
+          <h1 className="text-6xl md:text-8xl font-black mb-4 tracking-tight drop-shadow-lg">Game Over!</h1>
+          <p className="text-2xl md:text-3xl text-white/80 mb-12 font-medium">The quiz has ended.</p>
+
+          {/* Leaderboard Placeholder */}
+          <div className="bg-black/20 rounded-2xl p-8 mb-12 backdrop-blur-sm">
+            <p className="text-white/60 italic">Leaderboard Coming Soon...</p>
+          </div>
+
           <Link href="/dashboard">
-            <Button size="lg" className="w-full">
+            <Button
+              size="lg"
+              variant="secondary"
+              className="w-full h-16 text-xl font-bold rounded-full shadow-lg hover:scale-[1.02] transition-transform"
+            >
               Back to Dashboard
             </Button>
           </Link>
@@ -271,5 +378,9 @@ export function HostGameController({ game }: { game: any }) {
     )
   }
 
-  return <div>Loading...</div>
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <Loader2 className="w-10 h-10 animate-spin text-primary" />
+    </div>
+  )
 }

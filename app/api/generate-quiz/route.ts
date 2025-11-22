@@ -1,4 +1,5 @@
 import { generateObject } from "ai"
+import { google } from "@ai-sdk/google"
 import { z } from "zod"
 import { createClient } from "@/lib/supabase/server"
 
@@ -27,7 +28,7 @@ const quizSchema = z.object({
 })
 
 export async function POST(req: Request) {
-  const { topic, difficulty } = await req.json()
+  const { topic, difficulty, numQuestions = 5 } = await req.json()
   const supabase = await createClient()
 
   // Verify auth
@@ -38,14 +39,21 @@ export async function POST(req: Request) {
     return new Response("Unauthorized", { status: 401 })
   }
 
-  const prompt = `Generate a quiz about "${topic}" with ${difficulty} difficulty. 
-  Create 5 engaging multiple-choice questions. 
-  Ensure there is exactly one correct answer per question.
-  Make the questions fun and educational.`
+  const prompt = `Generate a quiz about "${topic}" with ${difficulty} difficulty level. 
+  Create ${numQuestions} engaging multiple-choice questions. 
+  Requirements:
+  - Each question must have exactly 4 options
+  - Exactly ONE option per question must be correct (is_correct: true)
+  - Make the questions educational and progressively challenging
+  - Use clear, concise language appropriate for the difficulty level
+  - Time limits: Easy = 30s, Medium = 20s, Hard = 15s
+  - Points: Easy = 500, Medium = 1000, Hard = 1500`
 
   try {
     const { object } = await generateObject({
-      model: "openai/gpt-4o",
+      model: google("gemini-1.5-flash", {
+        apiKey: process.env.GEMINI_API_KEY || "AIzaSyBKOR5Phnk6HpmbkKJEaCvOCXnTmbzCXjE",
+      }),
       schema: quizSchema,
       prompt,
     })

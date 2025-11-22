@@ -11,9 +11,8 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ArrowLeft, Loader2, Sparkles, Zap } from "lucide-react"
+import { ArrowLeft, Loader2, Sparkles, Zap, BookOpen, Layers } from "lucide-react"
 import Link from "next/link"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 export default function CreateQuizPage() {
   const [isLoading, setIsLoading] = useState(false)
@@ -134,56 +133,80 @@ export default function CreateQuizPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto">
-      <div className="mb-6">
+    <div className="max-w-4xl mx-auto">
+      <div className="mb-8">
         <Link
           href="/dashboard"
-          className="text-sm text-muted-foreground hover:text-primary flex items-center gap-1 mb-4"
+          className="text-sm text-muted-foreground hover:text-primary flex items-center gap-1 mb-4 transition-colors"
         >
           <ArrowLeft className="h-4 w-4" /> Back to Dashboard
         </Link>
-        <h1 className="text-3xl font-bold">Create New Quiz</h1>
-        <p className="text-muted-foreground">Choose how you want to start creating.</p>
+        <h1 className="text-3xl font-bold tracking-tight">Create New Quiz</h1>
+        <p className="text-muted-foreground mt-1">Start from scratch or let AI create a quiz for you.</p>
       </div>
 
-      <Tabs defaultValue="manual" value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-2 mb-6">
-          <TabsTrigger value="manual">Manual Creation</TabsTrigger>
-          <TabsTrigger value="ai">
+      <Tabs defaultValue="manual" value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList className="grid w-full grid-cols-2 h-auto p-1 bg-muted/50 rounded-xl">
+          <TabsTrigger
+            value="manual"
+            className="py-3 rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm transition-all"
+          >
+            <BookOpen className="w-4 h-4 mr-2" />
+            Manual Creation
+          </TabsTrigger>
+          <TabsTrigger
+            value="ai"
+            className="py-3 rounded-lg data-[state=active]:bg-background data-[state=active]:shadow-sm transition-all"
+          >
             <Sparkles className="w-4 h-4 mr-2 text-yellow-500" />
             Generate with AI
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="manual">
-          <Card>
+        <TabsContent value="manual" className="mt-0">
+          <Card className="border-2 border-border/50 shadow-sm hover:border-primary/20 transition-colors">
             <form onSubmit={onSubmitManual}>
               <CardHeader>
-                <CardTitle>Quiz Details</CardTitle>
-                <CardDescription>You can add questions after creating the quiz.</CardDescription>
+                <CardTitle className="flex items-center gap-2">
+                  <Layers className="h-5 w-5 text-primary" />
+                  Quiz Details
+                </CardTitle>
+                <CardDescription>
+                  Basic information about your quiz. You can add questions in the next step.
+                </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-6">
                 <div className="space-y-2">
-                  <Label htmlFor="title">Title</Label>
-                  <Input id="title" name="title" placeholder="e.g. General Knowledge Trivia" required />
+                  <Label htmlFor="title" className="text-base">
+                    Title
+                  </Label>
+                  <Input
+                    id="title"
+                    name="title"
+                    placeholder="e.g. General Knowledge Trivia"
+                    required
+                    className="h-11"
+                  />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="description">Description</Label>
+                  <Label htmlFor="description" className="text-base">
+                    Description
+                  </Label>
                   <Textarea
                     id="description"
                     name="description"
                     placeholder="Briefly describe what this quiz is about..."
-                    className="min-h-[100px]"
+                    className="min-h-[120px] resize-none"
                   />
                 </div>
               </CardContent>
-              <CardFooter className="flex justify-end gap-2">
+              <CardFooter className="flex justify-end gap-3 bg-muted/20 py-4">
                 <Link href="/dashboard">
                   <Button variant="ghost" type="button">
                     Cancel
                   </Button>
                 </Link>
-                <Button type="submit" disabled={isLoading}>
+                <Button type="submit" disabled={isLoading} className="px-6">
                   {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                   Create & Add Questions
                 </Button>
@@ -192,42 +215,59 @@ export default function CreateQuizPage() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="ai">
-          <Card className="border-primary/20 shadow-lg shadow-primary/5">
+        <TabsContent value="ai" className="mt-0">
+          <Card className="border-2 border-primary/10 shadow-lg shadow-primary/5">
             <form onSubmit={onSubmitAI}>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
+              <CardHeader className="bg-gradient-to-r from-primary/5 to-transparent">
+                <CardTitle className="flex items-center gap-2 text-primary">
                   <Sparkles className="w-5 h-5 text-yellow-500" />
                   AI Quiz Generator
                 </CardTitle>
-                <CardDescription>Tell us a topic and we'll generate questions for you!</CardDescription>
+                <CardDescription>
+                  Just tell us a topic, and our AI will generate engaging questions, options, and correct answers
+                  instantly.
+                </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-6 pt-6">
                 <div className="space-y-2">
-                  <Label htmlFor="topic">Quiz Topic</Label>
+                  <Label htmlFor="topic" className="text-base">
+                    Quiz Topic
+                  </Label>
                   <Input
                     id="topic"
                     name="topic"
                     placeholder="e.g. 1990s Pop Music, Photosynthesis, French History..."
                     required
+                    className="h-11"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="difficulty">Difficulty Level</Label>
-                  <Select name="difficulty" defaultValue="Medium">
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select difficulty" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Easy">Easy</SelectItem>
-                      <SelectItem value="Medium">Medium</SelectItem>
-                      <SelectItem value="Hard">Hard</SelectItem>
-                      <SelectItem value="Expert">Expert</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Label htmlFor="difficulty" className="text-base">
+                    Difficulty Level
+                  </Label>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    {["Easy", "Medium", "Hard", "Expert"].map((level) => (
+                      <div key={level} className="relative">
+                        <input
+                          type="radio"
+                          name="difficulty"
+                          value={level}
+                          id={`diff-${level}`}
+                          className="peer sr-only"
+                          defaultChecked={level === "Medium"}
+                        />
+                        <label
+                          htmlFor={`diff-${level}`}
+                          className="flex flex-col items-center justify-center p-3 rounded-lg border-2 border-muted bg-card hover:bg-accent hover:text-accent-foreground peer-checked:border-primary peer-checked:bg-primary/5 peer-checked:text-primary cursor-pointer transition-all text-sm font-medium"
+                        >
+                          {level}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </CardContent>
-              <CardFooter className="flex justify-end gap-2">
+              <CardFooter className="flex justify-end gap-3 bg-muted/20 py-4">
                 <Link href="/dashboard">
                   <Button variant="ghost" type="button">
                     Cancel
@@ -236,7 +276,7 @@ export default function CreateQuizPage() {
                 <Button
                   type="submit"
                   disabled={isLoading}
-                  className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 border-0"
+                  className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 border-0 px-6 shadow-md hover:shadow-lg transition-all"
                 >
                   {isLoading ? (
                     <>

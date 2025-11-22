@@ -20,13 +20,15 @@ export default async function DashboardLayout({
   }
 
   return (
-    <div className="flex h-screen w-full bg-muted/20">
-      <aside className="hidden w-64 lg:block fixed inset-y-0">
+    <div className="flex h-screen w-full bg-muted/30">
+      <aside className="hidden w-72 lg:block fixed inset-y-0 z-40 shadow-sm">
         <DashboardSidebar />
       </aside>
-      <main className="flex-1 lg:pl-64 flex flex-col h-full">
+      <main className="flex-1 lg:pl-72 flex flex-col h-full min-w-0 transition-all duration-300 ease-in-out">
         <DashboardHeader />
-        <div className="flex-1 p-6 overflow-y-auto">{children}</div>
+        <div className="flex-1 overflow-y-auto p-4 lg:p-8 scroll-smooth">
+          <div className="mx-auto max-w-7xl w-full space-y-8 animate-in fade-in duration-500">{children}</div>
+        </div>
       </main>
     </div>
   )
