@@ -50,7 +50,7 @@ export function DashboardSidebar() {
     <div className="flex h-full flex-col bg-card border-r">
       <div className="p-6 flex items-center gap-2 border-b">
         <Bolt className="h-6 w-6 text-primary" />
-        <span className="font-bold text-xl">Lovable Bolt</span>
+        <span className="font-bold text-xl">NST WALE</span>
       </div>
       <div className="flex-1 flex flex-col gap-1 p-4">
         {routes.map((route) => (
