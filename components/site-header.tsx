@@ -10,7 +10,7 @@ export function SiteHeader() {
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <Zap className="h-5 w-5 fill-current" />
           </div>
-          <span>Lovable Bolt</span>
+          <span>IGNITRONS</span>
         </Link>
         <nav className="hidden md:flex items-center gap-6 text-sm font-medium">
           <Link href="#features" className="text-muted-foreground hover:text-foreground transition-colors">
