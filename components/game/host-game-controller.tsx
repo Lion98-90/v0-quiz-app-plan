@@ -7,7 +7,6 @@ import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Users, Trophy, ArrowRight, Play, Check, Loader2, Copy } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
-import useWindowSize from "react-use/lib/useWindowSize"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
 import { toast } from "sonner"
@@ -18,7 +17,6 @@ export function HostGameController({ game }: { game: any }) {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(game.current_question_index)
   const [countdown, setCountdown] = useState<number | null>(null)
   const [answers, setAnswers] = useState<any[]>([])
-  const { width, height } = useWindowSize()
   const supabase = createClient()
 
   const currentQuestion = game.quiz.questions[currentQuestionIndex]

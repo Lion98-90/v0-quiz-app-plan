@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { createGame } from "@/app/actions/game"
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -152,7 +153,9 @@ export default async function DashboardPage() {
                       Edit
                     </Button>
                   </Link>
-                  <Button className="flex-1 shadow-sm group-hover:shadow-md transition-all">Host Live</Button>
+                  <form action={createGame.bind(null, quiz.id)} className="flex-1">
+                    <Button className="w-full shadow-sm group-hover:shadow-md transition-all">Host Live</Button>
+                  </form>
                 </CardFooter>
               </Card>
             ))}

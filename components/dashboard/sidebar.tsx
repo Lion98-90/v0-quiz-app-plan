@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { BarChart3, Bolt, Home, LogOut, Plus, Settings } from "lucide-react"
+import { BarChart3, Bolt, Home, LogOut, Plus, Settings, PlayCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { createClient } from "@/lib/supabase/client"
@@ -69,6 +69,17 @@ export function DashboardSidebar() {
             {route.label}
           </Link>
         ))}
+
+        <Link
+          href="/play"
+          target="_blank"
+          className={cn(
+            "flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 text-muted-foreground hover:bg-muted hover:text-foreground hover:pl-5",
+          )}
+        >
+          <PlayCircle className="h-5 w-5" />
+          Join Game
+        </Link>
       </div>
 
       <div className="p-4 border-t space-y-3 bg-muted/10">
