@@ -9,15 +9,11 @@ import { Card } from "@/components/ui/card"
 import { Loader2, Trophy, CheckCircle2, XCircle, User } from "lucide-react"
 import { motion } from "framer-motion"
 
-// ... existing functions ...
-// [Assuming submitAnswer logic and others are preserved]
-
 function PlayerGame() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const supabase = createClient()
 
-  // ... existing state ...
   const [pin, setPin] = useState(searchParams.get("pin") || "")
   const [name, setName] = useState("")
   const [game, setGame] = useState<any>(null)
@@ -29,7 +25,43 @@ function PlayerGame() {
   const [isLoading, setIsLoading] = useState(false)
   const [lastAnswerCorrect, setLastAnswerCorrect] = useState<boolean | null>(null)
 
-  // ... existing useEffects for state sync ...
+  const [currentQuestion, setCurrentQuestion] = useState<any>(null)
+  const [currentOptions, setCurrentOptions] = useState<any[]>([])
+
+  useEffect(() => {
+    if (gameState === "question" && game?.quiz_id && game?.current_question_index !== undefined) {
+      fetchCurrentQuestion()
+    }
+  }, [gameState, game?.current_question_index])
+
+  const fetchCurrentQuestion = async () => {
+    try {
+      // Fetch the current question
+      const { data: questionData } = await supabase
+        .from("questions")
+        .select("id, question_text, time_limit, points")
+        .eq("quiz_id", game.quiz_id)
+        .eq("order_index", game.current_question_index)
+        .single()
+
+      if (!questionData) return
+
+      // Fetch options for this question
+      const { data: optionsData } = await supabase
+        .from("options")
+        .select("id, option_text, is_correct, created_at")
+        .eq("question_id", questionData.id)
+        .order("created_at", { ascending: true })
+
+      if (optionsData) {
+        setCurrentQuestion(questionData)
+        setCurrentOptions(optionsData)
+      }
+    } catch (e) {
+      console.error("[v0] Error fetching question:", e)
+    }
+  }
+
   useEffect(() => {
     if (!game?.id || !player?.id) return
 
@@ -40,12 +72,18 @@ function PlayerGame() {
         { event: "UPDATE", schema: "public", table: "games", filter: `id=eq.${game.id}` },
         (payload) => {
           const newState = payload.new.state
+          const newIndex = payload.new.current_question_index
+
+          // Update game object with new data
+          setGame((prev: any) => ({ ...prev, ...payload.new }))
 
           if (newState === "question") {
             setGameState("question")
-            setLastAnswerCorrect(null) // Reset for new question
+            setLastAnswerCorrect(null)
           } else if (newState === "results") {
             setGameState("results")
+          } else if (newState === "leaderboard") {
+            setGameState("results") // Show results while host shows leaderboard
           } else if (newState === "finished") {
             setGameState("finished")
           }
@@ -58,14 +96,13 @@ function PlayerGame() {
     }
   }, [game?.id, player?.id])
 
-  // ... existing handlers (handleJoinGame, handleRegisterPlayer) ...
   const handleJoinGame = async () => {
     setError("")
     setIsLoading(true)
     try {
       const { data: games, error: gameError } = await supabase
         .from("games")
-        .select("*")
+        .select("*, quiz:quizzes(id)")
         .eq("pin_code", pin)
         .in("status", ["waiting", "active"])
         .single()
@@ -75,7 +112,7 @@ function PlayerGame() {
         return
       }
 
-      setGame(games)
+      setGame({ ...games, quiz_id: games.quiz.id })
       setGameState("enter-name")
     } catch (e) {
       setError("Something went wrong")
@@ -113,41 +150,28 @@ function PlayerGame() {
   }
 
   const submitAnswer = async (optionIndex: number) => {
-    if (gameState !== "question") return
+    if (gameState !== "question" || !currentQuestion || !currentOptions[optionIndex]) return
     setGameState("answered")
 
     try {
-      // ... fetch logic same as before ...
-      const { data: questionData } = await supabase
-        .from("questions")
-        .select("id, options(id)")
-        .eq("quiz_id", game.quiz_id)
-        .eq("order_index", game.current_question_index)
-        .single()
-
-      if (!questionData) return
-
-      const { data: sortedOptions } = await supabase
-        .from("options")
-        .select("id, created_at, is_correct")
-        .eq("question_id", questionData.id)
-        .order("created_at", { ascending: true })
-
-      if (!sortedOptions || !sortedOptions[optionIndex]) return
-
-      const selectedOption = sortedOptions[optionIndex]
-      setLastAnswerCorrect(selectedOption.is_correct) // Store locally for feedback
+      const selectedOption = currentOptions[optionIndex]
+      setLastAnswerCorrect(selectedOption.is_correct)
 
       await supabase.from("player_answers").insert({
         game_id: game.id,
         player_id: player.id,
-        question_id: questionData.id,
+        question_id: currentQuestion.id,
         option_id: selectedOption.id,
         is_correct: selectedOption.is_correct,
-        points_awarded: selectedOption.is_correct ? 1000 : 0,
+        points_awarded: selectedOption.is_correct ? currentQuestion.points || 1000 : 0,
       })
+
+      // Update player score locally
+      if (selectedOption.is_correct) {
+        setPlayer((prev: any) => ({ ...prev, score: (prev.score || 0) + (currentQuestion.points || 1000) }))
+      }
     } catch (e) {
-      console.error(e)
+      console.error("[v0] Error submitting answer:", e)
     }
   }
 
@@ -243,34 +267,63 @@ function PlayerGame() {
   }
 
   if (gameState === "question") {
+    if (!currentQuestion || currentOptions.length === 0) {
+      return (
+        <div className="min-h-screen bg-slate-100 flex items-center justify-center">
+          <Loader2 className="w-12 h-12 text-primary animate-spin" />
+        </div>
+      )
+    }
+
     return (
-      <div className="min-h-screen bg-slate-100 flex flex-col p-4">
+      <div className="min-h-screen bg-slate-100 flex flex-col p-4 sm:p-6">
         <div className="flex justify-between items-center mb-4 px-2">
-          <div className="font-bold text-slate-700 flex items-center gap-2 bg-white px-3 py-1.5 rounded-full shadow-sm">
+          <div className="font-bold text-slate-700 flex items-center gap-2 bg-white px-3 py-1.5 rounded-full shadow-sm text-sm sm:text-base">
             <User className="w-4 h-4" /> {name}
           </div>
-          <div className="font-bold text-slate-700 bg-white px-3 py-1.5 rounded-full shadow-sm">
+          <div className="font-bold text-slate-700 bg-white px-3 py-1.5 rounded-full shadow-sm text-sm sm:text-base">
             Score: {player.score || 0}
           </div>
         </div>
 
-        <div className="flex-1 grid grid-cols-2 gap-4 pb-4">
+        <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-md mb-4 sm:mb-6">
+          <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900 text-center leading-tight">
+            {currentQuestion.question_text}
+          </h2>
+        </div>
+
+        <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 pb-4">
           {[
-            { color: "bg-red-500 shadow-red-700", icon: "▲" },
-            { color: "bg-blue-500 shadow-blue-700", icon: "◆" },
-            { color: "bg-yellow-500 shadow-yellow-700", icon: "●" },
-            { color: "bg-green-500 shadow-green-700", icon: "■" },
-          ].map((btn, idx) => (
-            <button
-              key={idx}
-              className={`${btn.color} rounded-2xl shadow-[0_6px_0_0] active:shadow-none active:translate-y-[6px] transition-all flex items-center justify-center h-full group`}
-              onClick={() => submitAnswer(idx)}
-            >
-              <div className="w-16 h-16 bg-black/20 rounded-full flex items-center justify-center text-4xl text-white font-black group-hover:scale-110 transition-transform">
-                {btn.icon}
-              </div>
-            </button>
-          ))}
+            { color: "bg-red-500 shadow-red-700 hover:bg-red-600", icon: "▲", borderColor: "border-red-600" },
+            { color: "bg-blue-500 shadow-blue-700 hover:bg-blue-600", icon: "◆", borderColor: "border-blue-600" },
+            {
+              color: "bg-yellow-500 shadow-yellow-700 hover:bg-yellow-600",
+              icon: "●",
+              borderColor: "border-yellow-600",
+            },
+            { color: "bg-green-500 shadow-green-700 hover:bg-green-600", icon: "■", borderColor: "border-green-600" },
+          ].map((btn, idx) => {
+            const option = currentOptions[idx]
+            if (!option) return null
+
+            return (
+              <button
+                key={idx}
+                className={`${btn.color} ${btn.borderColor} border-4 rounded-2xl shadow-[0_6px_0_0] active:shadow-none active:translate-y-[6px] transition-all flex flex-col items-center justify-center p-4 sm:p-6 min-h-[120px] sm:min-h-[160px] group relative overflow-hidden`}
+                onClick={() => submitAnswer(idx)}
+              >
+                {/* Shape icon */}
+                <div className="w-12 h-12 sm:w-14 sm:h-14 bg-black/20 rounded-full flex items-center justify-center text-2xl sm:text-3xl text-white font-black mb-3 group-hover:scale-110 transition-transform">
+                  {btn.icon}
+                </div>
+
+                {/* Answer text */}
+                <p className="text-white font-bold text-base sm:text-lg md:text-xl text-center leading-tight px-2">
+                  {option.option_text}
+                </p>
+              </button>
+            )
+          })}
         </div>
       </div>
     )
@@ -307,7 +360,7 @@ function PlayerGame() {
             <>
               <CheckCircle2 className="w-20 h-20 mx-auto mb-6 text-white drop-shadow-md" />
               <h1 className="text-4xl font-black mb-2">Correct!</h1>
-              <p className="text-xl opacity-90">+1000 Points</p>
+              <p className="text-xl opacity-90">+{currentQuestion?.points || 1000} Points</p>
             </>
           ) : lastAnswerCorrect === false ? (
             <>
@@ -318,8 +371,8 @@ function PlayerGame() {
           ) : (
             <>
               <Loader2 className="w-16 h-16 mx-auto mb-6 animate-spin opacity-75" />
-              <h1 className="text-3xl font-bold mb-2">Time's Up!</h1>
-              <p className="text-lg opacity-75">Look at the screen for results</p>
+              <h1 className="text-3xl font-bold mb-2">Results</h1>
+              <p className="text-lg opacity-75">Look at the screen</p>
             </>
           )}
         </div>
@@ -334,9 +387,8 @@ function PlayerGame() {
         <Trophy className="w-24 h-24 text-yellow-400 drop-shadow-[0_0_15px_rgba(250,204,21,0.5)] animate-bounce" />
         <div>
           <h1 className="text-5xl font-black mb-2">Game Over</h1>
-          <p className="text-xl text-purple-200">
-            You placed: <span className="font-bold text-white">...</span>
-          </p>
+          <p className="text-xl text-purple-200">Thanks for playing!</p>
+          <p className="text-2xl font-bold mt-4">Final Score: {player?.score || 0}</p>
         </div>
         <Button
           variant="secondary"
