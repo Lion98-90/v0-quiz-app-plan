@@ -5,7 +5,7 @@ import Image from "next/image"
 import { useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
-import { Users, Trophy, ArrowRight, Play, Check, Loader2, Copy } from "lucide-react"
+import { Users, Trophy, ArrowRight, Play, Check, Loader2, Copy, Crown, Medal, Award } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
@@ -13,16 +13,16 @@ import { toast } from "sonner"
 
 export function HostGameController({ game }: { game: any }) {
   const [players, setPlayers] = useState<any[]>([])
-  const [gameState, setGameState] = useState(game.state) // lobby, question, results, leaderboard, finished
+  const [gameState, setGameState] = useState(game.state)
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(game.current_question_index)
   const [countdown, setCountdown] = useState<number | null>(null)
   const [answers, setAnswers] = useState<any[]>([])
+  const [leaderboard, setLeaderboard] = useState<any[]>([])
   const supabase = createClient()
 
   const currentQuestion = game.quiz.questions[currentQuestionIndex]
 
   useEffect(() => {
-    // Subscribe to game updates
     const channel = supabase
       .channel(`game:${game.id}`)
       .on(
@@ -31,7 +31,8 @@ export function HostGameController({ game }: { game: any }) {
         (payload) => {
           if (payload.eventType === "INSERT") {
             setPlayers((prev) => [...prev, payload.new])
-            // Sound effect could play here
+          } else if (payload.eventType === "UPDATE") {
+            setPlayers((prev) => prev.map((p) => (p.id === payload.new.id ? payload.new : p)))
           }
         },
       )
@@ -46,9 +47,12 @@ export function HostGameController({ game }: { game: any }) {
       )
       .subscribe()
 
-    // Fetch initial players
     const fetchPlayers = async () => {
-      const { data } = await supabase.from("players").select("*").eq("game_id", game.id)
+      const { data } = await supabase
+        .from("players")
+        .select("*")
+        .eq("game_id", game.id)
+        .order("score", { ascending: false })
       if (data) setPlayers(data)
     }
     fetchPlayers()
@@ -58,7 +62,6 @@ export function HostGameController({ game }: { game: any }) {
     }
   }, [game.id])
 
-  // Timer effect with improved visual feedback
   useEffect(() => {
     if (gameState === "question" && countdown !== null && countdown > 0) {
       const timer = setTimeout(() => setCountdown(countdown - 1), 1000)
@@ -87,6 +90,32 @@ export function HostGameController({ game }: { game: any }) {
   }
 
   const handleShowResults = async () => {
+    const correctOption = currentQuestion.options.find((o: any) => o.is_correct)
+    if (!correctOption) return
+
+    const correctAnswerIds = answers
+      .filter((a) => a.question_id === currentQuestion.id && a.option_id === correctOption.id)
+      .map((a) => a.player_id)
+
+    for (const playerId of correctAnswerIds) {
+      const { data: player } = await supabase.from("players").select("score").eq("id", playerId).single()
+
+      if (player) {
+        await supabase
+          .from("players")
+          .update({ score: (player.score || 0) + currentQuestion.points })
+          .eq("id", playerId)
+      }
+    }
+
+    const { data: updatedPlayers } = await supabase
+      .from("players")
+      .select("*")
+      .eq("game_id", game.id)
+      .order("score", { ascending: false })
+
+    if (updatedPlayers) setPlayers(updatedPlayers)
+
     await updateGameState("results")
   }
 
@@ -95,22 +124,32 @@ export function HostGameController({ game }: { game: any }) {
     if (nextIndex < game.quiz.questions.length) {
       await updateGameState("question", nextIndex)
       setCountdown(game.quiz.questions[nextIndex].time_limit)
-      setAnswers([]) // Reset answers for visual counting
+      setAnswers([])
     } else {
-      await updateGameState("finished")
+      await updateGameState("leaderboard")
+      const { data } = await supabase
+        .from("players")
+        .select("*")
+        .eq("game_id", game.id)
+        .order("score", { ascending: false })
+        .limit(10)
+      if (data) setLeaderboard(data)
     }
   }
 
-  const copyJoinLink = () => {
-    navigator.clipboard.writeText(`https://lovable-bolt.vercel.app/play?pin=${game.pin_code}`)
-    toast.success("Join link copied to clipboard!")
+  const handleFinishGame = async () => {
+    await updateGameState("finished")
   }
 
-  // Views
+  const copyJoinLink = () => {
+    const link = `${window.location.origin}/play?pin=${game.pin_code}`
+    navigator.clipboard.writeText(link)
+    toast.success("Join link copied!")
+  }
+
   if (gameState === "lobby") {
     return (
       <div className="min-h-screen bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-500 flex flex-col items-center justify-center text-white p-8 relative overflow-hidden">
-        {/* Background Pattern */}
         <div className="absolute inset-0 bg-[url('/grid.svg')] bg-center [mask-image:linear-gradient(180deg,white,rgba(255,255,255,0))]" />
 
         <div className="max-w-6xl w-full space-y-12 z-10 flex flex-col items-center">
@@ -129,7 +168,9 @@ export function HostGameController({ game }: { game: any }) {
               <div className="flex-1 space-y-8 text-center md:text-left">
                 <div className="space-y-2">
                   <p className="text-2xl font-medium text-muted-foreground uppercase tracking-wide">Go to</p>
-                  <p className="text-4xl lg:text-5xl font-bold text-foreground">lovable-bolt.vercel.app/play</p>
+                  <p className="text-3xl lg:text-4xl font-bold text-foreground break-all">
+                    {window.location.origin}/play
+                  </p>
                 </div>
 
                 <div className="space-y-2">
@@ -144,7 +185,7 @@ export function HostGameController({ game }: { game: any }) {
                 <div className="absolute -inset-1 bg-gradient-to-r from-pink-600 to-purple-600 rounded-2xl blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200" />
                 <div className="relative p-6 bg-white rounded-xl shadow-inner">
                   <Image
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=https://lovable-bolt.vercel.app/play?pin=${game.pin_code}`}
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${window.location.origin}/play?pin=${game.pin_code}`}
                     alt="Join Game QR Code"
                     width={280}
                     height={280}
@@ -199,11 +240,9 @@ export function HostGameController({ game }: { game: any }) {
     )
   }
 
-  // ... existing question, results, finished views with improved styling ...
   if (gameState === "question") {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col relative overflow-hidden">
-        {/* Progress Bar */}
         <div className="w-full h-2 bg-slate-200">
           <motion.div
             className="h-full bg-primary"
@@ -220,7 +259,7 @@ export function HostGameController({ game }: { game: any }) {
             </Badge>
             <div className="text-xl font-bold bg-white px-6 py-2 rounded-full shadow-sm flex items-center gap-2">
               <span className="text-primary">{answers.length}</span>
-              <span className="text-muted-foreground">Answers</span>
+              <span className="text-muted-foreground">/ {players.length} Answers</span>
             </div>
           </div>
 
@@ -272,8 +311,6 @@ export function HostGameController({ game }: { game: any }) {
     )
   }
 
-  // ... existing results and finished views ...
-  // (Improved Styling for Results View)
   if (gameState === "results") {
     const correctOptionId = currentQuestion.options.find((o: any) => o.is_correct)?.id
 
@@ -334,7 +371,8 @@ export function HostGameController({ game }: { game: any }) {
               onClick={handleNextQuestion}
               className="gap-2 text-xl px-10 h-16 rounded-full shadow-xl hover:scale-105 transition-all"
             >
-              Next Question <ArrowRight className="w-6 h-6" />
+              {currentQuestionIndex + 1 < game.quiz.questions.length ? "Next Question" : "Show Leaderboard"}{" "}
+              <ArrowRight className="w-6 h-6" />
             </Button>
           </div>
         </div>
@@ -342,12 +380,78 @@ export function HostGameController({ game }: { game: any }) {
     )
   }
 
-  // (Improved Styling for Finished View)
+  if (gameState === "leaderboard") {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-indigo-900 flex flex-col items-center justify-center p-8 text-white relative overflow-hidden">
+        <div className="absolute inset-0 bg-[url('/grid.svg')] bg-center opacity-10" />
+
+        <div className="max-w-4xl w-full space-y-12 z-10">
+          <div className="text-center space-y-4">
+            <Trophy className="w-24 h-24 text-yellow-400 mx-auto drop-shadow-[0_0_20px_rgba(250,204,21,0.5)] animate-bounce" />
+            <h1 className="text-6xl md:text-8xl font-black tracking-tight drop-shadow-lg">Final Results!</h1>
+            <p className="text-2xl text-purple-200">Here are the top performers</p>
+          </div>
+
+          <div className="space-y-4">
+            {leaderboard.map((player, idx) => (
+              <motion.div
+                key={player.id}
+                initial={{ x: -100, opacity: 0 }}
+                animate={{ x: 0, opacity: 1 }}
+                transition={{ delay: idx * 0.1 }}
+                className={`
+                  flex items-center gap-6 p-6 rounded-2xl backdrop-blur-md border-2 transition-all hover:scale-[1.02]
+                  ${idx === 0 ? "bg-gradient-to-r from-yellow-500/20 to-yellow-600/20 border-yellow-400 shadow-xl shadow-yellow-500/20" : ""}
+                  ${idx === 1 ? "bg-gradient-to-r from-slate-400/20 to-slate-500/20 border-slate-400" : ""}
+                  ${idx === 2 ? "bg-gradient-to-r from-orange-600/20 to-orange-700/20 border-orange-500" : ""}
+                  ${idx > 2 ? "bg-white/5 border-white/10" : ""}
+                `}
+              >
+                <div className="flex items-center justify-center w-16 h-16 shrink-0">
+                  {idx === 0 && <Crown className="w-12 h-12 text-yellow-400 drop-shadow-md" />}
+                  {idx === 1 && <Medal className="w-10 h-10 text-slate-300" />}
+                  {idx === 2 && <Award className="w-10 h-10 text-orange-500" />}
+                  {idx > 2 && <span className="text-3xl font-black text-white/50">#{idx + 1}</span>}
+                </div>
+
+                <div className="flex-1 min-w-0">
+                  <p className="text-2xl font-bold truncate">{player.name}</p>
+                  <p className="text-lg text-white/60">{player.score} points</p>
+                </div>
+
+                {idx < 3 && (
+                  <div
+                    className={`
+                    px-4 py-2 rounded-full font-bold text-lg
+                    ${idx === 0 ? "bg-yellow-400 text-yellow-900" : ""}
+                    ${idx === 1 ? "bg-slate-300 text-slate-900" : ""}
+                    ${idx === 2 ? "bg-orange-500 text-white" : ""}
+                  `}
+                  >
+                    {idx === 0 ? "🥇 Winner" : idx === 1 ? "🥈 2nd Place" : "🥉 3rd Place"}
+                  </div>
+                )}
+              </motion.div>
+            ))}
+          </div>
+
+          <div className="flex justify-center gap-4 pt-8">
+            <Button
+              size="lg"
+              onClick={handleFinishGame}
+              className="px-10 h-16 rounded-full text-xl font-bold shadow-xl hover:scale-105 transition-all"
+            >
+              End Game
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (gameState === "finished") {
     return (
       <div className="min-h-screen bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-500 flex flex-col items-center justify-center p-8 text-white relative overflow-hidden">
-        {/* Confetti Effect would go here */}
-
         <div className="bg-white/10 backdrop-blur-md p-12 rounded-[3rem] shadow-2xl text-center max-w-3xl w-full border border-white/20 relative z-10">
           <div className="mb-8 relative inline-block">
             <div className="absolute -inset-4 bg-yellow-400/30 blur-xl rounded-full animate-pulse" />
@@ -355,12 +459,7 @@ export function HostGameController({ game }: { game: any }) {
           </div>
 
           <h1 className="text-6xl md:text-8xl font-black mb-4 tracking-tight drop-shadow-lg">Game Over!</h1>
-          <p className="text-2xl md:text-3xl text-white/80 mb-12 font-medium">The quiz has ended.</p>
-
-          {/* Leaderboard Placeholder */}
-          <div className="bg-black/20 rounded-2xl p-8 mb-12 backdrop-blur-sm">
-            <p className="text-white/60 italic">Leaderboard Coming Soon...</p>
-          </div>
+          <p className="text-2xl md:text-3xl text-white/80 mb-12 font-medium">Thanks for playing!</p>
 
           <Link href="/dashboard">
             <Button
