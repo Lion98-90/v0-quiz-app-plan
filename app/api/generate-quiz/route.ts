@@ -1,5 +1,5 @@
 import { generateObject } from "ai"
-import { createGoogleGenerativeAI } from "@ai-sdk/google"
+import { createOpenAI } from "@ai-sdk/openai"
 import { z } from "zod"
 import { createClient } from "@/lib/supabase/server"
 
@@ -68,22 +68,20 @@ For each question:
 Generate ${numQuestions} diverse and interesting questions.`
 
     const apiKey =
-      process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
-      process.env.GEMINI_API_KEY ||
-      "AIzaSyBKOR5Phnk6HpmbkKJEaCvOCXnTmbzCXjE"
+      process.env.OPENAI_API_KEY ||
+      "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"
 
-    const google = createGoogleGenerativeAI({
+    const openai = createOpenAI({
       apiKey: apiKey,
     })
 
     const { object } = await generateObject({
-      model: google("gemini-1.5-flash"),
+      model: openai("gpt-4o-mini"),
       schema: quizSchema,
       prompt,
       temperature: 0.7,
     })
 
-    // Validate each question has exactly 1 correct answer
     const validatedQuestions = object.questions.map((q) => {
       const correctCount = q.options.filter((o) => o.is_correct).length
       if (correctCount !== 1) {
@@ -101,8 +99,8 @@ Generate ${numQuestions} diverse and interesting questions.`
     console.error("[v0] Error generating quiz:", error)
 
     const errorMessage = error?.message || "Unknown error"
-    const isRateLimit = errorMessage.includes("429") || errorMessage.includes("quota")
-    const isAuth = errorMessage.includes("401") || errorMessage.includes("API key")
+    const isRateLimit = errorMessage.includes("429") || errorMessage.includes("quota") || errorMessage.includes("rate")
+    const isAuth = errorMessage.includes("401") || errorMessage.includes("API key") || errorMessage.includes("invalid")
 
     let userMessage = "Failed to generate quiz. Please try again."
     if (isRateLimit) {
