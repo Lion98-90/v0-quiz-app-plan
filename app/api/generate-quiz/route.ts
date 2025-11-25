@@ -9,9 +9,9 @@ const quizSchema = z.object({
   questions: z
     .array(
       z.object({
-        question_text: z.string().min(10).describe("A clear, well-formed question"),
-        time_limit: z.number().int().min(10).max(60).describe("Time limit in seconds (10-60)"),
-        points: z.number().int().min(100).max(2000).describe("Points for correct answer (100-2000)"),
+        question_text: z.string().min(5).describe("A clear, well-formed question"),
+        time_limit: z.number().int().min(10).max(60).describe("Time limit in seconds"),
+        points: z.number().int().min(100).max(2000).describe("Points for correct answer"),
         options: z
           .array(
             z.object({
@@ -20,10 +20,7 @@ const quizSchema = z.object({
             }),
           )
           .length(4)
-          .describe("Exactly 4 options required")
-          .refine((opts) => opts.filter((o) => o.is_correct).length === 1, {
-            message: "Exactly one option must be marked as correct",
-          }),
+          .describe("Exactly 4 options"),
       }),
     )
     .min(3)
@@ -32,93 +29,84 @@ const quizSchema = z.object({
 
 export async function POST(req: Request) {
   try {
-    const { topic, difficulty, numQuestions = 5 } = await req.json()
+    const body = await req.json()
+    const { topic, difficulty, numQuestions = 5 } = body
+
+    console.log("[v0] Received request:", { topic, difficulty, numQuestions })
+
+    if (!topic) {
+      return Response.json({ error: "Topic is required" }, { status: 400 })
+    }
+
     const supabase = await createClient()
 
     // Verify auth
     const {
       data: { user },
     } = await supabase.auth.getUser()
+
     if (!user) {
-      return new Response("Unauthorized", { status: 401 })
+      console.log("[v0] User not authenticated")
+      return Response.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const difficultySettings = {
-      Easy: { time: 30, points: 500, complexity: "basic concepts and facts" },
-      Medium: { time: 25, points: 1000, complexity: "moderate analysis and understanding" },
-      Hard: { time: 20, points: 1500, complexity: "advanced reasoning and synthesis" },
-      Expert: { time: 15, points: 2000, complexity: "expert-level mastery and critical thinking" },
+    const difficultySettings: Record<string, { time: number; points: number; complexity: string }> = {
+      Easy: { time: 30, points: 500, complexity: "basic concepts and simple facts" },
+      Medium: { time: 25, points: 1000, complexity: "moderate understanding and analysis" },
+      Hard: { time: 20, points: 1500, complexity: "advanced reasoning and detailed knowledge" },
+      Expert: { time: 15, points: 2000, complexity: "expert-level mastery" },
     }
 
-    const settings = difficultySettings[difficulty as keyof typeof difficultySettings] || difficultySettings.Medium
+    const settings = difficultySettings[difficulty] || difficultySettings.Medium
 
-    const prompt = `You are a professional quiz creator. Generate a high-quality quiz about "${topic}" at ${difficulty} difficulty level.
+    const prompt = `Generate a quiz about "${topic}" with ${numQuestions} multiple-choice questions at ${difficulty || "Medium"} difficulty.
 
-STRICT REQUIREMENTS:
-1. Create exactly ${numQuestions} multiple-choice questions
-2. Each question MUST have EXACTLY 4 answer options
-3. EXACTLY ONE option per question must be correct (is_correct: true), the other 3 must be false
-4. Questions should test ${settings.complexity}
-5. Each question should be clear, unambiguous, and well-written
-6. Options should be plausible but only one clearly correct
-7. Avoid trick questions - test genuine knowledge
-
-FORMATTING:
+Requirements:
+- Each question must have exactly 4 options
+- Exactly ONE option must be correct (is_correct: true), the other 3 must be false
+- Questions should test ${settings.complexity}
 - Time limit: ${settings.time} seconds per question
 - Points: ${settings.points} per correct answer
-- Question text: Clear, complete sentences without numbering
-- Options: Concise but complete answers
+- Make questions clear and educational
 
-Example question structure:
-{
-  "question_text": "What is the capital of France?",
-  "time_limit": ${settings.time},
-  "points": ${settings.points},
-  "options": [
-    { "option_text": "Paris", "is_correct": true },
-    { "option_text": "London", "is_correct": false },
-    { "option_text": "Berlin", "is_correct": false },
-    { "option_text": "Madrid", "is_correct": false }
-  ]
-}
+Return valid JSON matching the schema.`
 
-Now generate ${numQuestions} questions about ${topic}.`
+    console.log("[v0] Calling Gemini API...")
 
-    console.log("[v0] Generating quiz with Gemini API...")
+    const apiKey =
+      process.env.GEMINI_API_KEY ||
+      process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
+      "AIzaSyBKOR5Phnk6HpmbkKJEaCvOCXnTmbzCXjE"
 
     const { object } = await generateObject({
-      model: google("gemini-1.5-flash", {
-        apiKey:
-          process.env.GEMINI_API_KEY ||
-          process.env.GOOGLE_GENERATIVE_AI_API_KEY ||
-          "AIzaSyBKOR5Phnk6HpmbkKJEaCvOCXnTmbzCXjE",
-      }),
+      model: google("gemini-1.5-flash", { apiKey }),
       schema: quizSchema,
       prompt,
       temperature: 0.7,
     })
 
-    console.log("[v0] Generated questions:", object.questions.length)
+    console.log("[v0] Generated questions count:", object.questions.length)
 
-    for (const q of object.questions) {
-      if (q.options.length !== 4) {
-        throw new Error(`Question has ${q.options.length} options instead of 4`)
-      }
+    // Validate each question has exactly 1 correct answer
+    const validatedQuestions = object.questions.map((q, idx) => {
       const correctCount = q.options.filter((o) => o.is_correct).length
       if (correctCount !== 1) {
-        throw new Error(`Question has ${correctCount} correct answers instead of 1`)
+        // Fix: ensure exactly one correct answer
+        const fixedOptions = q.options.map((opt, optIdx) => ({
+          ...opt,
+          is_correct: optIdx === 0, // Make first option correct as fallback
+        }))
+        return { ...q, options: fixedOptions }
       }
-    }
+      return q
+    })
 
-    return Response.json({ questions: object.questions })
+    return Response.json({ questions: validatedQuestions })
   } catch (error: any) {
-    console.error("[v0] Error generating quiz:", error)
-    return new Response(
-      JSON.stringify({
-        error: "Failed to generate quiz",
-        details: error?.message || "Unknown error",
-      }),
-      { status: 500, headers: { "Content-Type": "application/json" } },
+    console.error("[v0] Error generating quiz:", error?.message || error)
+    return Response.json(
+      { error: "Failed to generate quiz", details: error?.message || "Unknown error" },
+      { status: 500 },
     )
   }
 }

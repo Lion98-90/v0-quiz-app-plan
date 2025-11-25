@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
@@ -45,13 +45,20 @@ export function QuizEditor({ quiz }: { quiz: Quiz }) {
   const [activeQuestionId, setActiveQuestionId] = useState<string | null>(questions.length > 0 ? questions[0].id : null)
   const [isSaving, setIsSaving] = useState(false)
   const [title, setTitle] = useState(quiz.title)
-  // const [description, setDescription] = useState(quiz.description || "") // Keep for future use
 
   const router = useRouter()
   const supabase = createClient()
 
+  useEffect(() => {
+    if (quiz.questions && quiz.questions.length > 0) {
+      setQuestions(quiz.questions)
+      if (!activeQuestionId || !quiz.questions.find((q) => q.id === activeQuestionId)) {
+        setActiveQuestionId(quiz.questions[0].id)
+      }
+    }
+  }, [quiz.questions])
+
   const handleAddQuestion = async () => {
-    // ... existing logic ...
     setIsSaving(true)
     try {
       const newOrderIndex = questions.length > 0 ? Math.max(...questions.map((q) => q.order_index)) + 1 : 0
@@ -71,7 +78,6 @@ export function QuizEditor({ quiz }: { quiz: Quiz }) {
 
       if (error) throw error
 
-      // Add default options for the new question
       const { data: options, error: optionsError } = await supabase
         .from("options")
         .insert([
@@ -99,7 +105,6 @@ export function QuizEditor({ quiz }: { quiz: Quiz }) {
   }
 
   const handleDeleteQuestion = async (id: string) => {
-    // ... existing logic ...
     if (!confirm("Are you sure you want to delete this question?")) return
 
     try {
@@ -118,7 +123,6 @@ export function QuizEditor({ quiz }: { quiz: Quiz }) {
   }
 
   const handleUpdateQuizDetails = async () => {
-    // ... existing logic ...
     setIsSaving(true)
     try {
       const { error } = await supabase.from("quizzes").update({ title }).eq("id", quiz.id) // simplified update
@@ -131,7 +135,9 @@ export function QuizEditor({ quiz }: { quiz: Quiz }) {
   }
 
   const updateQuestionLocal = (updatedQuestion: Question) => {
-    setQuestions(questions.map((q) => (q.id === updatedQuestion.id ? updatedQuestion : q)))
+    setQuestions((prevQuestions) =>
+      prevQuestions.map((q) => (q.id === updatedQuestion.id ? { ...q, ...updatedQuestion } : q)),
+    )
   }
 
   const activeQuestion = questions.find((q) => q.id === activeQuestionId)
@@ -231,7 +237,9 @@ export function QuizEditor({ quiz }: { quiz: Quiz }) {
                 </div>
 
                 <div className="flex-1 min-w-0 space-y-1">
-                  <p className="text-sm font-medium truncate leading-tight">{q.question_text || "New Question"}</p>
+                  <p className="text-sm font-medium truncate leading-tight">
+                    {q.question_text && q.question_text !== "New Question" ? q.question_text : "New Question"}
+                  </p>
                   <div className="flex items-center gap-2 text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
                     <span>{q.question_type.replace("_", " ")}</span>
                     <span className="w-1 h-1 rounded-full bg-border" />
@@ -292,7 +300,11 @@ export function QuizEditor({ quiz }: { quiz: Quiz }) {
         <div className="flex-1 bg-muted/5 p-8 overflow-y-auto scroll-smooth">
           {activeQuestion ? (
             <div className="max-w-4xl mx-auto">
-              <QuestionCard key={activeQuestion.id} question={activeQuestion} onUpdate={updateQuestionLocal} />
+              <QuestionCard
+                key={`${activeQuestion.id}-${activeQuestion.question_text}`}
+                question={activeQuestion}
+                onUpdate={updateQuestionLocal}
+              />
             </div>
           ) : (
             <div className="h-full flex flex-col items-center justify-center text-muted-foreground animate-in fade-in duration-500">

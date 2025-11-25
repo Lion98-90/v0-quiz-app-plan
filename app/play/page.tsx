@@ -6,8 +6,8 @@ import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
-import { Loader2, Trophy, CheckCircle2, XCircle, User } from "lucide-react"
-import { motion } from "framer-motion"
+import { Progress } from "@/components/ui/progress"
+import { Loader2, Trophy, CheckCircle2, XCircle, User, ArrowLeft, ArrowRight, HelpCircle } from "lucide-react"
 
 function PlayerGame() {
   const searchParams = useSearchParams()
@@ -27,6 +27,9 @@ function PlayerGame() {
 
   const [currentQuestion, setCurrentQuestion] = useState<any>(null)
   const [currentOptions, setCurrentOptions] = useState<any[]>([])
+  const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null)
+  const [totalQuestions, setTotalQuestions] = useState(0)
+  const [quizTitle, setQuizTitle] = useState("")
 
   useEffect(() => {
     if (gameState === "question" && game?.quiz_id && game?.current_question_index !== undefined) {
@@ -36,6 +39,18 @@ function PlayerGame() {
 
   const fetchCurrentQuestion = async () => {
     try {
+      // Fetch quiz title and total questions count
+      if (!quizTitle) {
+        const { data: quizData } = await supabase.from("quizzes").select("title").eq("id", game.quiz_id).single()
+        if (quizData) setQuizTitle(quizData.title)
+
+        const { count } = await supabase
+          .from("questions")
+          .select("*", { count: "exact", head: true })
+          .eq("quiz_id", game.quiz_id)
+        if (count) setTotalQuestions(count)
+      }
+
       // Fetch the current question
       const { data: questionData } = await supabase
         .from("questions")
@@ -56,9 +71,10 @@ function PlayerGame() {
       if (optionsData) {
         setCurrentQuestion(questionData)
         setCurrentOptions(optionsData)
+        setSelectedOptionId(null) // Reset selection for new question
       }
     } catch (e) {
-      console.error("[v0] Error fetching question:", e)
+      console.error("Error fetching question:", e)
     }
   }
 
@@ -72,9 +88,6 @@ function PlayerGame() {
         { event: "UPDATE", schema: "public", table: "games", filter: `id=eq.${game.id}` },
         (payload) => {
           const newState = payload.new.state
-          const newIndex = payload.new.current_question_index
-
-          // Update game object with new data
           setGame((prev: any) => ({ ...prev, ...payload.new }))
 
           if (newState === "question") {
@@ -83,7 +96,7 @@ function PlayerGame() {
           } else if (newState === "results") {
             setGameState("results")
           } else if (newState === "leaderboard") {
-            setGameState("results") // Show results while host shows leaderboard
+            setGameState("results")
           } else if (newState === "finished") {
             setGameState("finished")
           }
@@ -149,12 +162,14 @@ function PlayerGame() {
     }
   }
 
-  const submitAnswer = async (optionIndex: number) => {
-    if (gameState !== "question" || !currentQuestion || !currentOptions[optionIndex]) return
+  const submitAnswer = async () => {
+    if (gameState !== "question" || !currentQuestion || !selectedOptionId) return
     setGameState("answered")
 
     try {
-      const selectedOption = currentOptions[optionIndex]
+      const selectedOption = currentOptions.find((opt) => opt.id === selectedOptionId)
+      if (!selectedOption) return
+
       setLastAnswerCorrect(selectedOption.is_correct)
 
       await supabase.from("player_answers").insert({
@@ -166,42 +181,41 @@ function PlayerGame() {
         points_awarded: selectedOption.is_correct ? currentQuestion.points || 1000 : 0,
       })
 
-      // Update player score locally
       if (selectedOption.is_correct) {
         setPlayer((prev: any) => ({ ...prev, score: (prev.score || 0) + (currentQuestion.points || 1000) }))
       }
     } catch (e) {
-      console.error("[v0] Error submitting answer:", e)
+      console.error("Error submitting answer:", e)
     }
   }
 
-  // Render Views with Improved UI
+  // Enter PIN Screen
   if (gameState === "enter-pin") {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-primary to-purple-700 flex items-center justify-center p-6">
-        <Card className="w-full max-w-sm p-8 space-y-8 shadow-2xl border-0 bg-white/95 backdrop-blur">
-          <div className="text-center space-y-2">
-            <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-4 transform rotate-3">
-              <Trophy className="w-8 h-8 text-primary" />
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md p-8 shadow-lg">
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <HelpCircle className="w-8 h-8 text-primary" />
             </div>
-            <h1 className="text-2xl font-black text-slate-800">Enter Game PIN</h1>
-            <p className="text-muted-foreground font-medium">Join a live quiz session</p>
+            <h1 className="text-2xl font-bold text-slate-900">Join Quiz</h1>
+            <p className="text-slate-500 mt-1">Enter the game PIN to join</p>
           </div>
-          <div className="space-y-6">
+          <div className="space-y-4">
             <Input
-              placeholder="000000"
-              className="text-center text-3xl tracking-[0.5em] h-16 font-black border-2 focus-visible:ring-primary/50 focus-visible:border-primary"
+              placeholder="Game PIN"
+              className="text-center text-2xl tracking-widest h-14 font-bold"
               value={pin}
               onChange={(e) => setPin(e.target.value)}
               maxLength={6}
             />
-            {error && <p className="text-sm text-red-500 text-center font-medium bg-red-50 p-2 rounded">{error}</p>}
+            {error && <p className="text-sm text-red-500 text-center bg-red-50 p-2 rounded">{error}</p>}
             <Button
-              className="w-full h-14 text-lg font-bold rounded-xl shadow-lg shadow-primary/20 hover:shadow-primary/30 hover:scale-[1.02] transition-all"
+              className="w-full h-12 text-lg font-semibold"
               onClick={handleJoinGame}
               disabled={isLoading || pin.length < 6}
             >
-              {isLoading ? <Loader2 className="animate-spin" /> : "Enter"}
+              {isLoading ? <Loader2 className="animate-spin" /> : "Join"}
             </Button>
           </div>
         </Card>
@@ -209,32 +223,33 @@ function PlayerGame() {
     )
   }
 
+  // Enter Name Screen
   if (gameState === "enter-name") {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-primary to-purple-700 flex items-center justify-center p-6">
-        <Card className="w-full max-w-sm p-8 space-y-8 shadow-2xl border-0 bg-white/95 backdrop-blur">
-          <div className="text-center space-y-2">
-            <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-4 transform -rotate-3">
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md p-8 shadow-lg">
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
               <User className="w-8 h-8 text-primary" />
             </div>
-            <h1 className="text-2xl font-black text-slate-800">What's your name?</h1>
-            <p className="text-muted-foreground font-medium">This will be shown on the leaderboard</p>
+            <h1 className="text-2xl font-bold text-slate-900">Enter Your Name</h1>
+            <p className="text-slate-500 mt-1">This will appear on the leaderboard</p>
           </div>
-          <div className="space-y-6">
+          <div className="space-y-4">
             <Input
-              placeholder="Nickname"
-              className="text-center text-xl h-16 font-bold border-2 focus-visible:ring-primary/50 focus-visible:border-primary"
+              placeholder="Your nickname"
+              className="text-center text-xl h-14 font-medium"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              maxLength={12}
+              maxLength={15}
             />
-            {error && <p className="text-sm text-red-500 text-center font-medium bg-red-50 p-2 rounded">{error}</p>}
+            {error && <p className="text-sm text-red-500 text-center bg-red-50 p-2 rounded">{error}</p>}
             <Button
-              className="w-full h-14 text-lg font-bold rounded-xl shadow-lg shadow-primary/20 hover:shadow-primary/30 hover:scale-[1.02] transition-all"
+              className="w-full h-12 text-lg font-semibold"
               onClick={handleRegisterPlayer}
-              disabled={isLoading || !name}
+              disabled={isLoading || !name.trim()}
             >
-              {isLoading ? <Loader2 className="animate-spin" /> : "Join Game"}
+              {isLoading ? <Loader2 className="animate-spin" /> : "Continue"}
             </Button>
           </div>
         </Card>
@@ -242,160 +257,166 @@ function PlayerGame() {
     )
   }
 
+  // Lobby / Waiting Screen
   if (gameState === "lobby") {
     return (
-      <div className="min-h-screen bg-emerald-500 flex flex-col items-center justify-center p-6 text-white text-center space-y-8 relative overflow-hidden">
-        <div className="absolute inset-0 bg-[url('/grid.svg')] opacity-10" />
-
-        <motion.div initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="z-10">
-          <h1 className="text-5xl font-black tracking-tight mb-2">You're In!</h1>
-          <p className="text-2xl opacity-90 font-medium">See your name on screen?</p>
-        </motion.div>
-
-        <div className="font-bold text-3xl bg-white/20 backdrop-blur-md px-10 py-6 rounded-3xl border border-white/30 shadow-xl transform rotate-2 z-10">
-          {name}
+      <div className="min-h-screen bg-emerald-500 flex flex-col items-center justify-center p-6 text-white text-center">
+        <div className="mb-8">
+          <h1 className="text-4xl font-bold mb-2">You're In!</h1>
+          <p className="text-xl opacity-90">See your name on screen?</p>
         </div>
-
-        <div className="pt-12 z-10">
-          <div className="w-16 h-16 border-4 border-white border-t-transparent rounded-full animate-spin mx-auto opacity-50 mb-6" />
-          <p className="text-lg font-medium opacity-75 bg-black/10 px-4 py-2 rounded-full">
-            Waiting for host to start...
-          </p>
+        <div className="bg-white/20 backdrop-blur px-8 py-4 rounded-2xl mb-8">
+          <p className="text-3xl font-bold">{name}</p>
+        </div>
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-white border-t-transparent rounded-full animate-spin" />
+          <p className="text-lg opacity-80">Waiting for host to start...</p>
         </div>
       </div>
     )
   }
 
+  // Question Screen - New Clean Design
   if (gameState === "question") {
     if (!currentQuestion || currentOptions.length === 0) {
       return (
         <div className="min-h-screen bg-slate-100 flex items-center justify-center">
-          <Loader2 className="w-12 h-12 text-primary animate-spin" />
+          <Loader2 className="w-10 h-10 text-primary animate-spin" />
         </div>
       )
     }
 
+    const currentQuestionNumber = (game?.current_question_index || 0) + 1
+    const progressPercent = totalQuestions > 0 ? (currentQuestionNumber / totalQuestions) * 100 : 0
+
     return (
-      <div className="min-h-screen bg-slate-100 flex flex-col p-4 sm:p-6">
-        <div className="flex justify-between items-center mb-4 px-2">
-          <div className="font-bold text-slate-700 flex items-center gap-2 bg-white px-3 py-1.5 rounded-full shadow-sm text-sm sm:text-base">
-            <User className="w-4 h-4" /> {name}
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+        <Card className="w-full max-w-2xl shadow-lg">
+          {/* Header */}
+          <div className="p-4 border-b flex items-center gap-3">
+            <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
+              <HelpCircle className="w-5 h-5 text-primary" />
+            </div>
+            <span className="font-semibold text-slate-800">{quizTitle || "Quiz"}</span>
           </div>
-          <div className="font-bold text-slate-700 bg-white px-3 py-1.5 rounded-full shadow-sm text-sm sm:text-base">
-            Score: {player.score || 0}
+
+          {/* Progress */}
+          <div className="px-6 pt-6">
+            <div className="flex justify-between items-center mb-2 text-sm">
+              <span className="text-slate-600">
+                Question {currentQuestionNumber} of {totalQuestions}
+              </span>
+              <span className="text-slate-500">{Math.round(progressPercent)}% Complete</span>
+            </div>
+            <Progress value={progressPercent} className="h-2" />
           </div>
-        </div>
 
-        <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-md mb-4 sm:mb-6">
-          <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900 text-center leading-tight">
-            {currentQuestion.question_text}
-          </h2>
-        </div>
+          {/* Question */}
+          <div className="p-6 text-center">
+            <h2 className="text-2xl font-bold text-slate-900 mb-2">Question {currentQuestionNumber}</h2>
+            <p className="text-lg text-slate-700">{currentQuestion.question_text}</p>
+          </div>
 
-        <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 pb-4">
-          {[
-            { color: "bg-red-500 shadow-red-700 hover:bg-red-600", icon: "▲", borderColor: "border-red-600" },
-            { color: "bg-blue-500 shadow-blue-700 hover:bg-blue-600", icon: "◆", borderColor: "border-blue-600" },
-            {
-              color: "bg-yellow-500 shadow-yellow-700 hover:bg-yellow-600",
-              icon: "●",
-              borderColor: "border-yellow-600",
-            },
-            { color: "bg-green-500 shadow-green-700 hover:bg-green-600", icon: "■", borderColor: "border-green-600" },
-          ].map((btn, idx) => {
-            const option = currentOptions[idx]
-            if (!option) return null
-
-            return (
+          {/* Options */}
+          <div className="px-6 pb-4 space-y-3">
+            {currentOptions.map((option) => (
               <button
-                key={idx}
-                className={`${btn.color} ${btn.borderColor} border-4 rounded-2xl shadow-[0_6px_0_0] active:shadow-none active:translate-y-[6px] transition-all flex flex-col items-center justify-center p-4 sm:p-6 min-h-[120px] sm:min-h-[160px] group relative overflow-hidden`}
-                onClick={() => submitAnswer(idx)}
+                key={option.id}
+                onClick={() => setSelectedOptionId(option.id)}
+                className={`w-full p-4 rounded-xl border-2 flex items-center gap-4 transition-all text-left
+                  ${
+                    selectedOptionId === option.id
+                      ? "border-primary bg-primary/5"
+                      : "border-slate-200 hover:border-slate-300 bg-white"
+                  }`}
               >
-                {/* Shape icon */}
-                <div className="w-12 h-12 sm:w-14 sm:h-14 bg-black/20 rounded-full flex items-center justify-center text-2xl sm:text-3xl text-white font-black mb-3 group-hover:scale-110 transition-transform">
-                  {btn.icon}
+                <div
+                  className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0
+                  ${selectedOptionId === option.id ? "border-primary bg-primary" : "border-slate-300"}`}
+                >
+                  {selectedOptionId === option.id && <div className="w-2 h-2 bg-white rounded-full" />}
                 </div>
-
-                {/* Answer text */}
-                <p className="text-white font-bold text-base sm:text-lg md:text-xl text-center leading-tight px-2">
+                <span
+                  className={`text-base ${selectedOptionId === option.id ? "text-slate-900 font-medium" : "text-slate-700"}`}
+                >
                   {option.option_text}
-                </p>
+                </span>
               </button>
-            )
-          })}
-        </div>
+            ))}
+          </div>
+
+          {/* Navigation */}
+          <div className="px-6 pb-6 flex items-center justify-between gap-4">
+            <Button variant="ghost" size="sm" disabled className="gap-2">
+              <ArrowLeft className="w-4 h-4" /> Previous
+            </Button>
+            <Button variant="ghost" size="sm" disabled className="gap-2">
+              Next <ArrowRight className="w-4 h-4" />
+            </Button>
+            <Button onClick={submitAnswer} disabled={!selectedOptionId} className="px-6">
+              Submit Answer
+            </Button>
+          </div>
+        </Card>
       </div>
     )
   }
 
+  // Answered / Waiting Screen
   if (gameState === "answered") {
     return (
-      <div className="min-h-screen bg-indigo-600 flex flex-col items-center justify-center p-6 text-white text-center space-y-8">
-        <motion.div
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          className="w-24 h-24 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm"
-        >
-          <CheckCircle2 className="w-12 h-12" />
-        </motion.div>
-        <div>
-          <h1 className="text-4xl font-black mb-2">Answer Submitted</h1>
-          <p className="text-xl opacity-80 font-medium">Waiting for others...</p>
+      <div className="min-h-screen bg-indigo-600 flex flex-col items-center justify-center p-6 text-white text-center">
+        <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center mb-6">
+          <CheckCircle2 className="w-10 h-10" />
         </div>
-        <div className="w-full max-w-xs bg-white/10 h-2 rounded-full overflow-hidden">
-          <div className="h-full bg-white/50 w-2/3 animate-pulse rounded-full" />
-        </div>
+        <h1 className="text-3xl font-bold mb-2">Answer Submitted!</h1>
+        <p className="text-xl opacity-80">Waiting for others...</p>
       </div>
     )
   }
 
+  // Results Screen
   if (gameState === "results") {
     return (
       <div
-        className={`min-h-screen flex flex-col items-center justify-center p-6 text-white text-center space-y-8 transition-colors duration-500 ${lastAnswerCorrect === true ? "bg-green-500" : lastAnswerCorrect === false ? "bg-red-500" : "bg-slate-800"}`}
+        className={`min-h-screen flex flex-col items-center justify-center p-6 text-white text-center
+        ${lastAnswerCorrect === true ? "bg-green-500" : lastAnswerCorrect === false ? "bg-red-500" : "bg-slate-700"}`}
       >
-        <div className="bg-white/10 backdrop-blur-md p-8 rounded-3xl border border-white/20 shadow-2xl w-full max-w-sm">
+        <Card className="w-full max-w-sm p-8 bg-white/10 backdrop-blur border-white/20">
           {lastAnswerCorrect === true ? (
             <>
-              <CheckCircle2 className="w-20 h-20 mx-auto mb-6 text-white drop-shadow-md" />
-              <h1 className="text-4xl font-black mb-2">Correct!</h1>
+              <CheckCircle2 className="w-16 h-16 mx-auto mb-4 text-white" />
+              <h1 className="text-3xl font-bold mb-2">Correct!</h1>
               <p className="text-xl opacity-90">+{currentQuestion?.points || 1000} Points</p>
             </>
           ) : lastAnswerCorrect === false ? (
             <>
-              <XCircle className="w-20 h-20 mx-auto mb-6 text-white drop-shadow-md" />
-              <h1 className="text-4xl font-black mb-2">Incorrect</h1>
-              <p className="text-xl opacity-90">Better luck next time</p>
+              <XCircle className="w-16 h-16 mx-auto mb-4 text-white" />
+              <h1 className="text-3xl font-bold mb-2">Incorrect</h1>
+              <p className="text-xl opacity-90">Better luck next time!</p>
             </>
           ) : (
             <>
-              <Loader2 className="w-16 h-16 mx-auto mb-6 animate-spin opacity-75" />
-              <h1 className="text-3xl font-bold mb-2">Results</h1>
-              <p className="text-lg opacity-75">Look at the screen</p>
+              <Loader2 className="w-12 h-12 mx-auto mb-4 animate-spin" />
+              <h1 className="text-2xl font-bold mb-2">Results</h1>
+              <p className="opacity-80">Look at the screen</p>
             </>
           )}
-        </div>
-        <p className="font-medium opacity-75 text-sm">Waiting for next question...</p>
+        </Card>
+        <p className="mt-6 opacity-70">Score: {player?.score || 0}</p>
       </div>
     )
   }
 
+  // Finished Screen
   if (gameState === "finished") {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-slate-900 to-purple-900 flex flex-col items-center justify-center p-6 text-white text-center space-y-8">
-        <Trophy className="w-24 h-24 text-yellow-400 drop-shadow-[0_0_15px_rgba(250,204,21,0.5)] animate-bounce" />
-        <div>
-          <h1 className="text-5xl font-black mb-2">Game Over</h1>
-          <p className="text-xl text-purple-200">Thanks for playing!</p>
-          <p className="text-2xl font-bold mt-4">Final Score: {player?.score || 0}</p>
-        </div>
-        <Button
-          variant="secondary"
-          size="lg"
-          className="rounded-full px-8 font-bold shadow-lg hover:scale-105 transition-all"
-          onClick={() => router.push("/")}
-        >
+      <div className="min-h-screen bg-gradient-to-b from-slate-900 to-purple-900 flex flex-col items-center justify-center p-6 text-white text-center">
+        <Trophy className="w-20 h-20 text-yellow-400 mb-6" />
+        <h1 className="text-4xl font-bold mb-2">Game Over!</h1>
+        <p className="text-xl text-purple-200 mb-4">Thanks for playing</p>
+        <p className="text-2xl font-bold mb-8">Final Score: {player?.score || 0}</p>
+        <Button variant="secondary" size="lg" onClick={() => router.push("/")}>
           Back Home
         </Button>
       </div>
@@ -409,8 +430,8 @@ export default function PlayPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen flex items-center justify-center bg-primary">
-          <Loader2 className="w-8 h-8 text-white animate-spin" />
+        <div className="min-h-screen flex items-center justify-center bg-slate-100">
+          <Loader2 className="w-8 h-8 text-primary animate-spin" />
         </div>
       }
     >

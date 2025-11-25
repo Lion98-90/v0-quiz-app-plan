@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
@@ -11,18 +10,21 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ArrowLeft, Loader2, Sparkles, Zap, BookOpen, Layers } from "lucide-react"
+import { ArrowLeft, Loader2, Sparkles, Zap, BookOpen, Layers, AlertCircle } from "lucide-react"
 import Link from "next/link"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 
 export default function CreateQuizPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [activeTab, setActiveTab] = useState("manual")
+  const [error, setError] = useState("")
   const router = useRouter()
   const supabase = createClient()
 
   async function onSubmitManual(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setIsLoading(true)
+    setError("")
 
     const formData = new FormData(event.currentTarget)
     const title = formData.get("title") as string
@@ -50,8 +52,9 @@ export default function CreateQuizPage() {
 
       router.push(`/dashboard/quiz/${data.id}`)
       router.refresh()
-    } catch (error) {
+    } catch (error: any) {
       console.error(error)
+      setError(error?.message || "Failed to create quiz")
     } finally {
       setIsLoading(false)
     }
@@ -60,6 +63,7 @@ export default function CreateQuizPage() {
   async function onSubmitAI(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setIsLoading(true)
+    setError("")
 
     const formData = new FormData(event.currentTarget)
     const topic = formData.get("topic") as string
@@ -71,16 +75,32 @@ export default function CreateQuizPage() {
       } = await supabase.auth.getUser()
       if (!user) throw new Error("Not authenticated")
 
-      // 1. Generate questions using AI
+      console.log("[v0] Starting AI quiz generation for topic:", topic)
+
       const response = await fetch("/api/generate-quiz", {
         method: "POST",
-        body: JSON.stringify({ topic, difficulty }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ topic, difficulty, numQuestions: 5 }),
       })
 
-      if (!response.ok) throw new Error("Failed to generate quiz")
-      const { questions } = await response.json()
+      const data = await response.json()
 
-      // 2. Create the quiz
+      if (!response.ok) {
+        console.error("[v0] API error:", data)
+        throw new Error(data.error || data.details || "Failed to generate quiz")
+      }
+
+      const { questions } = data
+
+      if (!questions || questions.length === 0) {
+        throw new Error("No questions were generated")
+      }
+
+      console.log("[v0] Generated questions:", questions.length)
+
+      // Create the quiz
       const { data: quiz, error: quizError } = await supabase
         .from("quizzes")
         .insert({
@@ -94,9 +114,10 @@ export default function CreateQuizPage() {
 
       if (quizError) throw quizError
 
-      // 3. Insert questions and options
+      // Insert questions and options
       for (let i = 0; i < questions.length; i++) {
         const q = questions[i]
+
         const { data: questionData, error: qError } = await supabase
           .from("questions")
           .insert({
@@ -104,13 +125,16 @@ export default function CreateQuizPage() {
             question_text: q.question_text,
             question_type: "multiple_choice",
             order_index: i,
-            time_limit: q.time_limit,
-            points: q.points,
+            time_limit: q.time_limit || 30,
+            points: q.points || 1000,
           })
           .select()
           .single()
 
-        if (qError) throw qError
+        if (qError) {
+          console.error("[v0] Error inserting question:", qError)
+          throw qError
+        }
 
         const optionsToInsert = q.options.map((opt: any) => ({
           question_id: questionData.id,
@@ -120,13 +144,18 @@ export default function CreateQuizPage() {
 
         const { error: oError } = await supabase.from("options").insert(optionsToInsert)
 
-        if (oError) throw oError
+        if (oError) {
+          console.error("[v0] Error inserting options:", oError)
+          throw oError
+        }
       }
 
+      console.log("[v0] Quiz created successfully, redirecting...")
       router.push(`/dashboard/quiz/${quiz.id}`)
       router.refresh()
-    } catch (error) {
-      console.error(error)
+    } catch (error: any) {
+      console.error("[v0] Error in onSubmitAI:", error)
+      setError(error?.message || "Failed to generate quiz. Please try again.")
     } finally {
       setIsLoading(false)
     }
@@ -144,6 +173,13 @@ export default function CreateQuizPage() {
         <h1 className="text-3xl font-bold tracking-tight">Create New Quiz</h1>
         <p className="text-muted-foreground mt-1">Start from scratch or let AI create a quiz for you.</p>
       </div>
+
+      {error && (
+        <Alert variant="destructive" className="mb-6">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
 
       <Tabs defaultValue="manual" value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList className="grid w-full grid-cols-2 h-auto p-1 bg-muted/50 rounded-xl">
@@ -236,7 +272,7 @@ export default function CreateQuizPage() {
                   <Input
                     id="topic"
                     name="topic"
-                    placeholder="e.g. 1990s Pop Music, Photosynthesis, French History..."
+                    placeholder="e.g. World History, Science, Pop Culture..."
                     required
                     className="h-11"
                   />
@@ -281,7 +317,7 @@ export default function CreateQuizPage() {
                   {isLoading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Generating Magic...
+                      Generating...
                     </>
                   ) : (
                     <>
