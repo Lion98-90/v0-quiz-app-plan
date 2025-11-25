@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -10,7 +10,6 @@ import { Card } from "@/components/ui/card"
 import { Trash2, Clock, Trophy, Check, Circle, ImageIcon, HelpCircle } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 
-// ... existing types ...
 interface Option {
   id: string
   option_text: string
@@ -30,65 +29,87 @@ interface Question {
 }
 
 export function QuestionCard({ question, onUpdate }: { question: Question; onUpdate: (q: Question) => void }) {
-  const [localQuestion, setLocalQuestion] = useState(question)
+  const [questionText, setQuestionText] = useState(question.question_text)
+  const [questionType, setQuestionType] = useState(question.question_type)
+  const [timeLimit, setTimeLimit] = useState(question.time_limit)
+  const [points, setPoints] = useState(question.points)
+  const [options, setOptions] = useState(question.options)
+
+  const questionIdRef = useRef(question.id)
   const supabase = createClient()
 
-  // ... existing useEffects and handlers ...
-  // Update local state when prop changes (switching questions)
   useEffect(() => {
-    setLocalQuestion(question)
-  }, [question])
-
-  const updateQuestionInDb = async (updates: Partial<Question>) => {
-    try {
-      const { error } = await supabase.from("questions").update(updates).eq("id", question.id)
-      if (error) throw error
-    } catch (error) {
-      console.error("Error updating question:", error)
+    if (questionIdRef.current !== question.id) {
+      questionIdRef.current = question.id
+      setQuestionText(question.question_text)
+      setQuestionType(question.question_type)
+      setTimeLimit(question.time_limit)
+      setPoints(question.points)
+      setOptions(question.options)
     }
-  }
+  }, [
+    question.id,
+    question.question_text,
+    question.question_type,
+    question.time_limit,
+    question.points,
+    question.options,
+  ])
 
-  const handleTextChange = (text: string) => {
-    const updated = { ...localQuestion, question_text: text }
-    setLocalQuestion(updated)
-    onUpdate(updated)
-  }
+  const updateQuestionInDb = useCallback(
+    async (updates: Partial<Question>) => {
+      try {
+        const { error } = await supabase.from("questions").update(updates).eq("id", question.id)
+        if (error) throw error
+      } catch (error) {
+        console.error("Error updating question:", error)
+      }
+    },
+    [question.id, supabase],
+  )
 
-  // Debounce save for text
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (localQuestion.question_text !== question.question_text) {
-        updateQuestionInDb({ question_text: localQuestion.question_text })
+      if (questionText !== question.question_text && questionText.trim() !== "") {
+        updateQuestionInDb({ question_text: questionText })
+        onUpdate({ ...question, question_text: questionText, options })
       }
-    }, 1000)
+    }, 500)
     return () => clearTimeout(timer)
-  }, [localQuestion.question_text])
+  }, [questionText])
 
   const handleTypeChange = async (type: Question["question_type"]) => {
-    const updated = { ...localQuestion, question_type: type }
-    setLocalQuestion(updated)
-    onUpdate(updated)
+    setQuestionType(type)
     await updateQuestionInDb({ question_type: type })
+    onUpdate({ ...question, question_type: type, question_text: questionText, options })
+  }
+
+  const handleTimeLimitChange = async (val: number) => {
+    setTimeLimit(val)
+    await updateQuestionInDb({ time_limit: val })
+    onUpdate({ ...question, time_limit: val, question_text: questionText, options })
+  }
+
+  const handlePointsChange = async (val: number) => {
+    setPoints(val)
+    await updateQuestionInDb({ points: val })
+    onUpdate({ ...question, points: val, question_text: questionText, options })
   }
 
   const handleOptionChange = async (optionId: string, text: string) => {
-    const updatedOptions = localQuestion.options.map((opt) =>
-      opt.id === optionId ? { ...opt, option_text: text } : opt,
-    )
-    const updated = { ...localQuestion, options: updatedOptions }
-    setLocalQuestion(updated)
-    onUpdate(updated)
+    const updatedOptions = options.map((opt) => (opt.id === optionId ? { ...opt, option_text: text } : opt))
+    setOptions(updatedOptions)
+    onUpdate({ ...question, options: updatedOptions, question_text: questionText })
     await supabase.from("options").update({ option_text: text }).eq("id", optionId)
   }
 
   const handleCorrectOptionChange = async (optionId: string) => {
-    const updatedOptions = localQuestion.options.map((opt) => ({
+    const updatedOptions = options.map((opt) => ({
       ...opt,
       is_correct: opt.id === optionId,
     }))
-    const updated = { ...localQuestion, options: updatedOptions }
-    setLocalQuestion(updated)
-    onUpdate(updated)
+    setOptions(updatedOptions)
+    onUpdate({ ...question, options: updatedOptions, question_text: questionText })
     await Promise.all(
       updatedOptions.map((opt) => supabase.from("options").update({ is_correct: opt.is_correct }).eq("id", opt.id)),
     )
@@ -112,8 +133,8 @@ export function QuestionCard({ question, onUpdate }: { question: Question; onUpd
               </Label>
               <div className="relative">
                 <Input
-                  value={localQuestion.question_text}
-                  onChange={(e) => handleTextChange(e.target.value)}
+                  value={questionText}
+                  onChange={(e) => setQuestionText(e.target.value)}
                   className="text-xl font-medium h-14 pl-4 pr-10 shadow-sm transition-all focus-visible:ring-primary"
                   placeholder="Start typing your question here..."
                 />
@@ -125,7 +146,7 @@ export function QuestionCard({ question, onUpdate }: { question: Question; onUpd
 
             <div className="w-64 space-y-3">
               <Label className="text-base font-semibold">Question Type</Label>
-              <Select value={localQuestion.question_type} onValueChange={(v: any) => handleTypeChange(v)}>
+              <Select value={questionType} onValueChange={(v: any) => handleTypeChange(v)}>
                 <SelectTrigger className="h-14 bg-card">
                   <SelectValue />
                 </SelectTrigger>
@@ -146,15 +167,7 @@ export function QuestionCard({ question, onUpdate }: { question: Question; onUpd
               </div>
               <div className="flex flex-col gap-1">
                 <Label className="text-xs uppercase text-muted-foreground font-bold tracking-wider">Time Limit</Label>
-                <Select
-                  value={localQuestion.time_limit.toString()}
-                  onValueChange={async (v) => {
-                    const val = Number.parseInt(v)
-                    setLocalQuestion({ ...localQuestion, time_limit: val })
-                    onUpdate({ ...localQuestion, time_limit: val })
-                    await updateQuestionInDb({ time_limit: val })
-                  }}
-                >
+                <Select value={timeLimit.toString()} onValueChange={(v) => handleTimeLimitChange(Number.parseInt(v))}>
                   <SelectTrigger className="h-7 w-[100px] border-0 bg-transparent p-0 focus:ring-0 text-sm font-semibold">
                     <SelectValue />
                   </SelectTrigger>
@@ -174,15 +187,7 @@ export function QuestionCard({ question, onUpdate }: { question: Question; onUpd
               </div>
               <div className="flex flex-col gap-1">
                 <Label className="text-xs uppercase text-muted-foreground font-bold tracking-wider">Points</Label>
-                <Select
-                  value={localQuestion.points.toString()}
-                  onValueChange={async (v) => {
-                    const val = Number.parseInt(v)
-                    setLocalQuestion({ ...localQuestion, points: val })
-                    onUpdate({ ...localQuestion, points: val })
-                    await updateQuestionInDb({ points: val })
-                  }}
-                >
+                <Select value={points.toString()} onValueChange={(v) => handlePointsChange(Number.parseInt(v))}>
                   <SelectTrigger className="h-7 w-[100px] border-0 bg-transparent p-0 focus:ring-0 text-sm font-semibold">
                     <SelectValue />
                   </SelectTrigger>
@@ -217,7 +222,7 @@ export function QuestionCard({ question, onUpdate }: { question: Question; onUpd
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {localQuestion.options.map((option, index) => (
+          {options.map((option, index) => (
             <div key={option.id} className="group relative">
               <div
                 className={`
@@ -268,7 +273,7 @@ export function QuestionCard({ question, onUpdate }: { question: Question; onUpd
                   </div>
                 </div>
 
-                {localQuestion.options.length > 2 && (
+                {options.length > 2 && (
                   <Button
                     variant="ghost"
                     size="icon"

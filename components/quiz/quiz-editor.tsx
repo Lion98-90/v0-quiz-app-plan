@@ -1,19 +1,31 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { ArrowLeft, Plus, Save, Settings, Play, LayoutGrid, MoreVertical } from "lucide-react"
+import { ArrowLeft, Plus, Save, Settings, LayoutGrid, MoreVertical, Check, Eye } from "lucide-react"
 import { QuestionCard } from "@/components/quiz/question-card"
 import Link from "next/link"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Separator } from "@/components/ui/separator"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+  DialogClose,
+} from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
-// ... existing types ...
 interface Option {
   id: string
   option_text: string
@@ -42,9 +54,16 @@ interface Quiz {
 
 export function QuizEditor({ quiz }: { quiz: Quiz }) {
   const [questions, setQuestions] = useState<Question[]>(quiz.questions || [])
-  const [activeQuestionId, setActiveQuestionId] = useState<string | null>(questions.length > 0 ? questions[0].id : null)
+  const [activeQuestionId, setActiveQuestionId] = useState<string | null>(
+    quiz.questions?.length > 0 ? quiz.questions[0].id : null,
+  )
   const [isSaving, setIsSaving] = useState(false)
+  const [saveSuccess, setSaveSuccess] = useState(false)
   const [title, setTitle] = useState(quiz.title)
+  const [description, setDescription] = useState(quiz.description || "")
+  const [status, setStatus] = useState(quiz.status)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [previewOpen, setPreviewOpen] = useState(false)
 
   const router = useRouter()
   const supabase = createClient()
@@ -122,23 +141,33 @@ export function QuizEditor({ quiz }: { quiz: Quiz }) {
     }
   }
 
-  const handleUpdateQuizDetails = async () => {
+  const handleSave = async () => {
     setIsSaving(true)
+    setSaveSuccess(false)
     try {
-      const { error } = await supabase.from("quizzes").update({ title }).eq("id", quiz.id) // simplified update
+      const { error } = await supabase.from("quizzes").update({ title, description, status }).eq("id", quiz.id)
+
       if (error) throw error
+
+      setSaveSuccess(true)
+      setTimeout(() => setSaveSuccess(false), 2000)
     } catch (error) {
-      console.error("Error updating quiz:", error)
+      console.error("Error saving quiz:", error)
     } finally {
       setIsSaving(false)
     }
   }
 
-  const updateQuestionLocal = (updatedQuestion: Question) => {
-    setQuestions((prevQuestions) =>
-      prevQuestions.map((q) => (q.id === updatedQuestion.id ? { ...q, ...updatedQuestion } : q)),
-    )
+  const handleSaveSettings = async () => {
+    await handleSave()
+    setSettingsOpen(false)
   }
+
+  const updateQuestionLocal = useCallback((updatedQuestion: Question) => {
+    setQuestions((prevQuestions) =>
+      prevQuestions.map((q) => (q.id === updatedQuestion.id ? { ...updatedQuestion } : q)),
+    )
+  }, [])
 
   const activeQuestion = questions.find((q) => q.id === activeQuestionId)
 
@@ -165,34 +194,135 @@ export function QuizEditor({ quiz }: { quiz: Quiz }) {
               <Input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                onBlur={handleUpdateQuizDetails}
+                onBlur={handleSave}
                 className="text-lg font-bold h-8 border-transparent hover:border-input px-2 -ml-2 w-[300px] bg-transparent focus-visible:bg-background transition-colors"
               />
               <Badge
-                variant={quiz.status === "published" ? "default" : "secondary"}
+                variant={status === "published" ? "default" : "secondary"}
                 className="h-5 text-[10px] uppercase tracking-wider"
               >
-                {quiz.status}
+                {status}
               </Badge>
             </div>
             <span className="text-xs text-muted-foreground px-2">
-              {isSaving ? "Saving changes..." : "All changes saved"}
+              {isSaving ? "Saving changes..." : saveSuccess ? "Saved!" : "All changes saved"}
             </span>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handleUpdateQuizDetails} disabled={isSaving}>
-            <Save className="h-4 w-4 mr-2" />
-            Save
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleSave}
+            disabled={isSaving}
+            className={saveSuccess ? "border-green-500 text-green-600" : ""}
+          >
+            {saveSuccess ? <Check className="h-4 w-4 mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+            {saveSuccess ? "Saved" : "Save"}
           </Button>
-          <Button variant="ghost" size="sm">
-            <Settings className="h-4 w-4 mr-2" /> Settings
-          </Button>
+
+          <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+            <DialogTrigger asChild>
+              <Button variant="ghost" size="sm">
+                <Settings className="h-4 w-4 mr-2" /> Settings
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[500px]">
+              <DialogHeader>
+                <DialogTitle>Quiz Settings</DialogTitle>
+                <DialogDescription>Configure your quiz settings and visibility.</DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="quiz-title">Quiz Title</Label>
+                  <Input id="quiz-title" value={title} onChange={(e) => setTitle(e.target.value)} />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="quiz-description">Description</Label>
+                  <Textarea
+                    id="quiz-description"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Add a description for your quiz..."
+                    rows={3}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="quiz-status">Status</Label>
+                  <Select value={status} onValueChange={setStatus}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="draft">Draft</SelectItem>
+                      <SelectItem value="published">Published</SelectItem>
+                      <SelectItem value="archived">Archived</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <DialogFooter>
+                <DialogClose asChild>
+                  <Button variant="outline">Cancel</Button>
+                </DialogClose>
+                <Button onClick={handleSaveSettings} disabled={isSaving}>
+                  {isSaving ? "Saving..." : "Save Settings"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
           <Separator orientation="vertical" className="h-6 mx-2" />
-          <Button size="sm" className="bg-primary text-primary-foreground shadow-sm hover:shadow-md transition-all">
-            <Play className="h-4 w-4 mr-2" /> Preview
-          </Button>
+
+          <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+            <DialogTrigger asChild>
+              <Button size="sm" className="bg-primary text-primary-foreground shadow-sm hover:shadow-md transition-all">
+                <Eye className="h-4 w-4 mr-2" /> Preview
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[700px] max-h-[80vh] overflow-auto">
+              <DialogHeader>
+                <DialogTitle>Quiz Preview</DialogTitle>
+                <DialogDescription>Preview how your quiz will appear to players.</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-6 py-4">
+                <div className="text-center space-y-2 pb-4 border-b">
+                  <h2 className="text-2xl font-bold">{title}</h2>
+                  {description && <p className="text-muted-foreground">{description}</p>}
+                  <Badge>{questions.length} Questions</Badge>
+                </div>
+
+                {questions.map((q, index) => (
+                  <div key={q.id} className="p-4 border rounded-lg space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline">{index + 1}</Badge>
+                      <span className="font-medium">{q.question_text}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 pl-6">
+                      {q.options.map((opt) => (
+                        <div
+                          key={opt.id}
+                          className={`p-2 rounded text-sm ${
+                            opt.is_correct
+                              ? "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 font-medium"
+                              : "bg-muted"
+                          }`}
+                        >
+                          {opt.option_text}
+                          {opt.is_correct && <Check className="inline h-3 w-3 ml-1" />}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex gap-4 text-xs text-muted-foreground pl-6">
+                      <span>{q.time_limit}s time limit</span>
+                      <span>{q.points} points</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
@@ -237,9 +367,7 @@ export function QuizEditor({ quiz }: { quiz: Quiz }) {
                 </div>
 
                 <div className="flex-1 min-w-0 space-y-1">
-                  <p className="text-sm font-medium truncate leading-tight">
-                    {q.question_text && q.question_text !== "New Question" ? q.question_text : "New Question"}
-                  </p>
+                  <p className="text-sm font-medium truncate leading-tight">{q.question_text || "New Question"}</p>
                   <div className="flex items-center gap-2 text-[10px] text-muted-foreground uppercase tracking-wider font-medium">
                     <span>{q.question_type.replace("_", " ")}</span>
                     <span className="w-1 h-1 rounded-full bg-border" />
@@ -262,7 +390,6 @@ export function QuizEditor({ quiz }: { quiz: Quiz }) {
                     <DropdownMenuItem
                       onClick={(e) => {
                         e.stopPropagation()
-                        // Duplicate logic could go here
                       }}
                     >
                       Duplicate
@@ -300,11 +427,7 @@ export function QuizEditor({ quiz }: { quiz: Quiz }) {
         <div className="flex-1 bg-muted/5 p-8 overflow-y-auto scroll-smooth">
           {activeQuestion ? (
             <div className="max-w-4xl mx-auto">
-              <QuestionCard
-                key={`${activeQuestion.id}-${activeQuestion.question_text}`}
-                question={activeQuestion}
-                onUpdate={updateQuestionLocal}
-              />
+              <QuestionCard key={activeQuestion.id} question={activeQuestion} onUpdate={updateQuestionLocal} />
             </div>
           ) : (
             <div className="h-full flex flex-col items-center justify-center text-muted-foreground animate-in fade-in duration-500">
