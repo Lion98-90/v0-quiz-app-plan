@@ -38,11 +38,23 @@ function PlayerGame() {
   }, [gameState, game?.current_question_index])
 
   const fetchCurrentQuestion = async () => {
+    if (!game?.quiz_id) return
+
     try {
       // Fetch quiz title and total questions count
       if (!quizTitle) {
-        const { data: quizData } = await supabase.from("quizzes").select("title").eq("id", game.quiz_id).single()
-        if (quizData) setQuizTitle(quizData.title)
+        const { data: quizData, error: quizError } = await supabase
+          .from("quizzes")
+          .select("title")
+          .eq("id", game.quiz_id)
+          .single()
+
+        if (quizData) {
+          setQuizTitle(quizData.title)
+        } else {
+          console.log("[v0] Quiz fetch error:", quizError)
+          setQuizTitle("Quiz") // Fallback title
+        }
 
         const { count } = await supabase
           .from("questions")
@@ -52,21 +64,28 @@ function PlayerGame() {
       }
 
       // Fetch the current question
-      const { data: questionData } = await supabase
+      const { data: questionData, error: questionError } = await supabase
         .from("questions")
         .select("id, question_text, time_limit, points")
         .eq("quiz_id", game.quiz_id)
         .eq("order_index", game.current_question_index)
         .single()
 
-      if (!questionData) return
+      if (questionError || !questionData) {
+        console.log("[v0] Question fetch error:", questionError)
+        return
+      }
 
       // Fetch options for this question
-      const { data: optionsData } = await supabase
+      const { data: optionsData, error: optionsError } = await supabase
         .from("options")
         .select("id, option_text, is_correct, created_at")
         .eq("question_id", questionData.id)
         .order("created_at", { ascending: true })
+
+      if (optionsError) {
+        console.log("[v0] Options fetch error:", optionsError)
+      }
 
       if (optionsData) {
         setCurrentQuestion(questionData)
@@ -74,7 +93,7 @@ function PlayerGame() {
         setSelectedOptionId(null) // Reset selection for new question
       }
     } catch (e) {
-      console.error("Error fetching question:", e)
+      console.error("[v0] Error fetching question:", e)
     }
   }
 
@@ -113,22 +132,37 @@ function PlayerGame() {
     setError("")
     setIsLoading(true)
     try {
-      const { data: games, error: gameError } = await supabase
+      // First, find the game by PIN code
+      const { data: gameData, error: gameError } = await supabase
         .from("games")
-        .select("*, quiz:quizzes(id)")
-        .eq("pin_code", pin)
+        .select("id, quiz_id, status, state, current_question_index, pin_code")
+        .eq("pin_code", pin.trim())
         .in("status", ["waiting", "active"])
         .single()
 
-      if (gameError || !games) {
-        setError("Game not found. Check the PIN.")
+      if (gameError) {
+        console.log("[v0] Game lookup error:", gameError)
+        if (gameError.code === "PGRST116") {
+          setError("Game not found. Check the PIN and try again.")
+        } else {
+          setError("Could not find game. Please try again.")
+        }
+        setIsLoading(false)
         return
       }
 
-      setGame({ ...games, quiz_id: games.quiz.id })
+      if (!gameData) {
+        setError("Game not found or has ended.")
+        setIsLoading(false)
+        return
+      }
+
+      console.log("[v0] Found game:", gameData)
+      setGame(gameData)
       setGameState("enter-name")
     } catch (e) {
-      setError("Something went wrong")
+      console.error("[v0] Join game error:", e)
+      setError("Connection error. Please try again.")
     } finally {
       setIsLoading(false)
     }
@@ -137,6 +171,7 @@ function PlayerGame() {
   const handleRegisterPlayer = async () => {
     if (!name.trim()) return
     setIsLoading(true)
+    setError("")
     try {
       const { data: newPlayer, error } = await supabase
         .from("players")
@@ -148,15 +183,21 @@ function PlayerGame() {
         .single()
 
       if (error) {
-        if (error.code === "23505") setError("Name already taken")
-        else setError("Could not join game")
+        console.log("[v0] Player registration error:", error)
+        if (error.code === "23505") {
+          setError("Name already taken. Try a different one.")
+        } else {
+          setError("Could not join game. Please try again.")
+        }
+        setIsLoading(false)
         return
       }
 
       setPlayer(newPlayer)
       setGameState("lobby")
     } catch (e) {
-      setError("Could not join")
+      console.error("[v0] Registration error:", e)
+      setError("Connection error. Please try again.")
     } finally {
       setIsLoading(false)
     }
@@ -185,7 +226,7 @@ function PlayerGame() {
         setPlayer((prev: any) => ({ ...prev, score: (prev.score || 0) + (currentQuestion.points || 1000) }))
       }
     } catch (e) {
-      console.error("Error submitting answer:", e)
+      console.error("[v0] Error submitting answer:", e)
     }
   }
 
@@ -206,10 +247,10 @@ function PlayerGame() {
               placeholder="Game PIN"
               className="text-center text-2xl tracking-widest h-14 font-bold"
               value={pin}
-              onChange={(e) => setPin(e.target.value)}
+              onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
               maxLength={6}
             />
-            {error && <p className="text-sm text-red-500 text-center bg-red-50 p-2 rounded">{error}</p>}
+            {error && <p className="text-sm text-red-500 text-center bg-red-50 p-3 rounded-lg">{error}</p>}
             <Button
               className="w-full h-12 text-lg font-semibold"
               onClick={handleJoinGame}
@@ -243,7 +284,7 @@ function PlayerGame() {
               onChange={(e) => setName(e.target.value)}
               maxLength={15}
             />
-            {error && <p className="text-sm text-red-500 text-center bg-red-50 p-2 rounded">{error}</p>}
+            {error && <p className="text-sm text-red-500 text-center bg-red-50 p-3 rounded-lg">{error}</p>}
             <Button
               className="w-full h-12 text-lg font-semibold"
               onClick={handleRegisterPlayer}
@@ -276,7 +317,7 @@ function PlayerGame() {
     )
   }
 
-  // Question Screen - New Clean Design
+  // Question Screen
   if (gameState === "question") {
     if (!currentQuestion || currentOptions.length === 0) {
       return (
@@ -292,7 +333,6 @@ function PlayerGame() {
     return (
       <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
         <Card className="w-full max-w-2xl shadow-lg">
-          {/* Header */}
           <div className="p-4 border-b flex items-center gap-3">
             <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
               <HelpCircle className="w-5 h-5 text-primary" />
@@ -300,7 +340,6 @@ function PlayerGame() {
             <span className="font-semibold text-slate-800">{quizTitle || "Quiz"}</span>
           </div>
 
-          {/* Progress */}
           <div className="px-6 pt-6">
             <div className="flex justify-between items-center mb-2 text-sm">
               <span className="text-slate-600">
@@ -311,13 +350,11 @@ function PlayerGame() {
             <Progress value={progressPercent} className="h-2" />
           </div>
 
-          {/* Question */}
           <div className="p-6 text-center">
             <h2 className="text-2xl font-bold text-slate-900 mb-2">Question {currentQuestionNumber}</h2>
             <p className="text-lg text-slate-700">{currentQuestion.question_text}</p>
           </div>
 
-          {/* Options */}
           <div className="px-6 pb-4 space-y-3">
             {currentOptions.map((option) => (
               <button
@@ -345,7 +382,6 @@ function PlayerGame() {
             ))}
           </div>
 
-          {/* Navigation */}
           <div className="px-6 pb-6 flex items-center justify-between gap-4">
             <Button variant="ghost" size="sm" disabled className="gap-2">
               <ArrowLeft className="w-4 h-4" /> Previous
@@ -362,7 +398,7 @@ function PlayerGame() {
     )
   }
 
-  // Answered / Waiting Screen
+  // Answered Screen
   if (gameState === "answered") {
     return (
       <div className="min-h-screen bg-indigo-600 flex flex-col items-center justify-center p-6 text-white text-center">
